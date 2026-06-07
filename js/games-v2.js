@@ -1161,6 +1161,931 @@ function createOddOneOutV2(container, onComplete) {
 }
 
 /* ══════════════════════════════════════════
+   GAME 16 v2 — Simon Game
+══════════════════════════════════════════ */
+function createSimonV2(container, onComplete) {
+  const COLORS = ['red','green','blue','yellow'];
+  const PC = { red:'#ef4444', green:'#10b981', blue:'#3b82f6', yellow:'#f59e0b' };
+  let sequence=[], playerIdx=0, level=0, locked=true, gone=false;
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">🔴</div>
+        <h2 class="v2i-title">Simon Game</h2>
+        <p class="v2i-sub">Watch the coloured pads light up in sequence, then repeat the exact order by tapping them.</p>
+        <div class="v2-simon-preview">
+          ${COLORS.map((c,i)=>`<div class="v2-sp-pad" style="background:${PC[c]};opacity:${i===1?.9:.22}"></div>`).join('')}
+        </div>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>👁</span><span>Watch the pads light up in order</span></div>
+          <div class="v2i-rule"><span>👆</span><span>Repeat the exact sequence by tapping</span></div>
+          <div class="v2i-rule"><span>⚠️</span><span>One wrong tap ends the game</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>Reach level 12 for a perfect score</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Simon</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = () => { level=0; sequence=[]; renderArena(); setTimeout(nextLevel,300); };
+  }
+
+  function renderArena() {
+    setHdrScore(''); setHdrTimer('Level 0');
+    container.innerHTML = `
+      <div class="v2-simon-wrap">
+        <div class="v2-simon-lvl" id="si-lv">Level 0</div>
+        <div class="v2-simon-grid">
+          ${COLORS.map(c=>`<div class="v2-simon-pad" id="si-${c}" style="--pc:${PC[c]}"></div>`).join('')}
+        </div>
+        <p class="v2-simon-msg" id="si-msg">Get ready…</p>
+      </div>`;
+    fadeIn(container.querySelector('.v2-simon-wrap'));
+    COLORS.forEach(c => { document.getElementById(`si-${c}`).onclick = () => { if (!locked && !gone) playerClick(c); }; });
+  }
+
+  function light(c, ms) {
+    return new Promise(res => {
+      if (gone) { res(); return; }
+      const el = document.getElementById(`si-${c}`);
+      if (el) el.classList.add('lit');
+      setTimeout(() => { if (el) el.classList.remove('lit'); res(); }, ms||420);
+    });
+  }
+
+  async function playSeq() {
+    if (gone) return;
+    locked = true;
+    const msg = document.getElementById('si-msg'); if (msg) msg.textContent = 'Watch…';
+    await new Promise(r => setTimeout(r, 700));
+    for (const c of sequence) {
+      if (gone) return;
+      await light(c, 420);
+      await new Promise(r => setTimeout(r, 180));
+    }
+    if (gone) return;
+    locked = false; playerIdx = 0;
+    const msg2 = document.getElementById('si-msg'); if (msg2) msg2.textContent = 'Your turn! 👇';
+  }
+
+  async function playerClick(c) {
+    if (gone) return;
+    await light(c, 180);
+    if (c === sequence[playerIdx]) {
+      playerIdx++;
+      if (playerIdx === sequence.length) {
+        locked = true;
+        const msg = document.getElementById('si-msg'); if (msg) msg.textContent = '✅ Perfect!';
+        await new Promise(r => setTimeout(r, 700));
+        if (!gone) nextLevel();
+      }
+    } else {
+      locked = true;
+      const msg = document.getElementById('si-msg'); if (msg) { msg.textContent = '❌ Wrong!'; msg.style.color='var(--red)'; }
+      setTimeout(() => { if (!gone) onComplete({ score: Math.min(100,Math.max(0,(level-1)*8)), details:{ Level:level, 'Sequence length':sequence.length } }); }, 1000);
+    }
+  }
+
+  function nextLevel() {
+    if (gone) return;
+    level++; sequence.push(COLORS[rand(0,3)]);
+    const lv = document.getElementById('si-lv'); if (lv) lv.textContent = `Level ${level}`;
+    setHdrTimer(`Level ${level}`);
+    if (level > 12) { onComplete({ score:100, details:{ Level:level, 'Perfect run':'✅' } }); return; }
+    playSeq();
+  }
+
+  intro();
+  return { destroy() { gone = true; } };
+}
+
+/* ══════════════════════════════════════════
+   GAME 17 v2 — Reaction Time Test
+══════════════════════════════════════════ */
+function createReactionTimeV2(container, onComplete) {
+  let trial=0, times=[], phase='idle', to=null;
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">⏱</div>
+        <h2 class="v2i-title">Reaction Time Test</h2>
+        <p class="v2i-sub">Tap the screen the instant it turns green. Measures your raw neural processing speed.</p>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>🔴</span><span>Red = wait patiently — do NOT tap yet</span></div>
+          <div class="v2i-rule"><span>🟢</span><span>Green = tap as fast as humanly possible!</span></div>
+          <div class="v2i-rule"><span>⚡</span><span>5 trials — average is your score</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>&lt;200ms = great · &lt;150ms = elite</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Begin Test</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = () => { trial=0; times=[]; renderTrial(); };
+  }
+
+  function renderTrial() {
+    setHdrTimer(`Trial ${trial+1}/5`); setHdrScore('');
+    container.innerHTML = `
+      <div class="v2-rt-wrap">
+        <div class="v2-rt-dots">
+          ${Array.from({length:5},(_,i)=>`<div class="v2-rt-dot${i<trial?' done':i===trial?' active':''}"></div>`).join('')}
+        </div>
+        <div class="v2-rt-screen wait" id="rt-screen">
+          <div class="v2-rt-label">Tap to start</div>
+        </div>
+        <div class="v2-rt-list" id="rt-list">
+          ${times.map((t,i)=>`<div class="v2-rt-item"><span>Trial ${i+1}</span><b style="color:${t<200?'var(--green)':t<300?'var(--yellow)':'var(--red)'}">${t} ms</b></div>`).join('')}
+        </div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-rt-wrap'));
+    const screen = document.getElementById('rt-screen');
+    phase = 'wait';
+    const tap = () => handleTap(screen);
+    screen.onclick = tap;
+    screen.addEventListener('touchstart', e => { e.preventDefault(); handleTap(screen); }, { passive:false });
+  }
+
+  function handleTap(screen) {
+    if (!screen) return;
+    if (phase === 'wait') {
+      phase = 'ready';
+      screen.className = 'v2-rt-screen ready';
+      screen.querySelector('.v2-rt-label').textContent = 'Wait for green…';
+      to = setTimeout(() => {
+        if (phase !== 'ready') return;
+        phase = 'go'; screen.className = 'v2-rt-screen go';
+        screen.querySelector('.v2-rt-label').textContent = 'TAP NOW!';
+        screen._t = Date.now();
+      }, rand(1500, 4000));
+    } else if (phase === 'ready') {
+      clearTimeout(to); phase = 'wait';
+      screen.className = 'v2-rt-screen wait';
+      screen.querySelector('.v2-rt-label').textContent = '⚠️ Too early! Tap to retry';
+    } else if (phase === 'go') {
+      const rt = Date.now() - screen._t;
+      times.push(rt); trial++;
+      if (trial >= 5) {
+        const avg = Math.round(times.reduce((a,b)=>a+b)/5);
+        const score = Math.min(100, Math.max(0, Math.round(100-(avg-150)/3)));
+        phase = 'done';
+        onComplete({ score, details:{ Average:avg+'ms', Best:Math.min(...times)+'ms', Worst:Math.max(...times)+'ms' } });
+      } else {
+        renderTrial();
+      }
+    }
+  }
+
+  intro();
+  return { destroy() { clearTimeout(to); } };
+}
+
+/* ══════════════════════════════════════════
+   GAME 18 v2 — Multi-Task Challenge
+══════════════════════════════════════════ */
+function createMultiTaskV2(container, onComplete) {
+  const WORDS  = ['Sun','Moon','Rain','Tree','Fire','Wave','Star','Wind','Rock','Lake','Cloud','Snow'];
+  const SHAPES = ['🔴','🟠','🟡','🟢','🔵','🟣'];
+  let shapeCount=0, wordList=[], sIdx=0, wIdx=0, timeLeft=30, done=false;
+  let wTimer=null, sTimer=null, cTimer=null;
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">🎭</div>
+        <h2 class="v2i-title">Multi-Task Challenge</h2>
+        <p class="v2i-sub">Two tasks run at the same time — read the flashing words AND count the coloured shapes.</p>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>📝</span><span>Words flash on the left — remember them</span></div>
+          <div class="v2i-rule"><span>🔢</span><span>Count every shape that appears on the right</span></div>
+          <div class="v2i-rule"><span>⏱</span><span>30 seconds — then you'll answer both questions</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>50 pts for shapes · 50 pts for word recall</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Dual Task</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = startGame;
+  }
+
+  function startGame() {
+    wordList = shuffle([...WORDS]).slice(0,8);
+    const shapeList = Array.from({length:18},()=>SHAPES[rand(0,SHAPES.length-1)]);
+    shapeCount=0; sIdx=0; wIdx=0; timeLeft=30; done=false;
+    setHdrTimer('30s');
+    container.innerHTML = `
+      <div class="v2-mt-wrap">
+        <div class="v2-mt-timerbar-wrap"><div class="v2-mt-timerbar" id="mt-bar"></div></div>
+        <div class="v2-mt-hud"><span>⏱ <b id="mt-tm">30</b>s</span><span style="font-size:.74rem;color:var(--txt3)">READ words + COUNT shapes</span></div>
+        <div class="v2-mt-panels">
+          <div class="v2-mt-panel"><div class="v2-mt-panel-lbl">📝 Word</div><div class="v2-mt-word" id="mt-word">—</div></div>
+          <div class="v2-mt-divider"></div>
+          <div class="v2-mt-panel"><div class="v2-mt-panel-lbl">🎨 Shape</div><div class="v2-mt-shape" id="mt-shape">—</div><div class="v2-mt-sc" id="mt-sc">0 shown</div></div>
+        </div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-mt-wrap'));
+    wTimer = setInterval(()=>{ const w=document.getElementById('mt-word'); if(!w)return; if(wIdx<wordList.length){w.textContent=wordList[wIdx++];w.style.animation='none';w.offsetHeight;w.style.animation='v2FadeUp .18s';}else w.textContent='—'; },1700);
+    sTimer = setInterval(()=>{ const s=document.getElementById('mt-shape'); if(!s)return; if(sIdx<shapeList.length){s.textContent=shapeList[sIdx++];shapeCount++;s.style.animation='none';s.offsetHeight;s.style.animation='v2Pop .15s';const sc=document.getElementById('mt-sc');if(sc)sc.textContent=shapeCount+' shown';}},1900);
+    cTimer = setInterval(()=>{
+      timeLeft--; const tm=document.getElementById('mt-tm');if(tm)tm.textContent=timeLeft;
+      const bar=document.getElementById('mt-bar');if(bar)bar.style.width=(timeLeft/30*100)+'%';
+      setHdrTimer(timeLeft+'s');
+      if(timeLeft<=0&&!done){done=true;clearAll();showQuestions();}
+    },1000);
+  }
+
+  function clearAll(){clearInterval(wTimer);clearInterval(sTimer);clearInterval(cTimer);}
+
+  function showQuestions() {
+    clearHdr();
+    let cntVal='', wordSel='', cntDone=false, wordDone=false;
+    const fakeWords = ['Smoke','Leaf','Sand','Fog','Mist','Dust'];
+    const opts = shuffle([...wordList.slice(0,4), ...shuffle(fakeWords).slice(0,4)]);
+    container.innerHTML = `
+      <div class="v2-mt-q-wrap">
+        <h3 style="margin:0 0 14px;color:var(--txt)">Answer both questions:</h3>
+        <div class="v2-mt-q-block">
+          <p class="v2-mt-q-lbl">1. How many shapes appeared?</p>
+          <div class="v2-fc-display" id="mt-disp">—</div>
+          <div class="v2-pad" style="width:100%;max-width:260px">
+            ${[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'].map(k=>`<button class="v2-pad-key${k==='⌫'?' del':k==='✓'?' ok':''}" data-k="${k}">${k}</button>`).join('')}
+          </div>
+        </div>
+        <div class="v2-mt-q-block" style="margin-top:16px">
+          <p class="v2-mt-q-lbl">2. Which word did you see?</p>
+          <div class="v2-mt-word-grid">
+            ${opts.map(w=>`<div class="v2-seq-choice" data-w="${w}" data-ok="${wordList.includes(w)}">${w}</div>`).join('')}
+          </div>
+        </div>
+        <button class="v2-start-btn" id="mt-sub" style="margin-top:14px;opacity:.4;pointer-events:none">Submit Answers</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-mt-q-wrap'));
+
+    function tryEnable(){if(cntDone&&wordDone){const b=document.getElementById('mt-sub');if(b){b.style.opacity='1';b.style.pointerEvents='auto';}}}
+    container.querySelectorAll('.v2-pad-key').forEach(btn=>btn.onclick=()=>{
+      const k=btn.dataset.k;
+      if(k==='⌫')cntVal=cntVal.slice(0,-1);
+      else if(k==='✓'){if(cntVal){cntDone=true;container.querySelectorAll('.v2-pad-key').forEach(b=>{b.style.opacity='.4';b.onclick=null;});tryEnable();}return;}
+      else if(cntVal.length<3)cntVal+=k;
+      const d=document.getElementById('mt-disp');if(d)d.textContent=cntVal||'—';
+    });
+    container.querySelectorAll('.v2-mt-word-grid .v2-seq-choice').forEach(btn=>btn.onclick=()=>{
+      container.querySelectorAll('.v2-mt-word-grid .v2-seq-choice').forEach(x=>x.classList.remove('sel2'));
+      btn.classList.add('sel2'); wordSel=btn.dataset.w; wordDone=true; tryEnable();
+    });
+    document.getElementById('mt-sub').onclick=()=>{
+      const cntOk=Math.abs(parseInt(cntVal)-shapeCount)<=2;
+      const wordOk=wordList.includes(wordSel);
+      onComplete({score:(cntOk?50:0)+(wordOk?50:0),details:{'Shapes (actual)':shapeCount,'Your count':cntVal||'—','Word match':wordOk?'✅':'❌'}});
+    };
+  }
+
+  intro();
+  return { destroy(){clearAll();} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 19 v2 — Word Association Speed
+══════════════════════════════════════════ */
+function createWordAssociationV2(container, onComplete) {
+  const PAIRS = [
+    {word:'Apple',   correct:'Fruit',      opts:['Fruit','Engine','Planet','Tool']},
+    {word:'Car',     correct:'Vehicle',    opts:['Animal','Vehicle','Emotion','Color']},
+    {word:'Dog',     correct:'Animal',     opts:['Furniture','Animal','Tool','Sport']},
+    {word:'Hammer',  correct:'Tool',       opts:['Tool','Plant','Liquid','Music']},
+    {word:'Rose',    correct:'Flower',     opts:['Flower','Metal','Liquid','Number']},
+    {word:'Eagle',   correct:'Bird',       opts:['Fish','Bird','Reptile','Insect']},
+    {word:'Piano',   correct:'Instrument', opts:['Instrument','Vehicle','Food','Planet']},
+    {word:'Ocean',   correct:'Water',      opts:['Land','Water','Fire','Air']},
+    {word:'Gold',    correct:'Metal',      opts:['Metal','Plant','Animal','Fabric']},
+    {word:'Soccer',  correct:'Sport',      opts:['Sport','Movie','Book','Color']},
+    {word:'Shark',   correct:'Fish',       opts:['Fish','Bird','Insect','Mammal']},
+    {word:'Trumpet', correct:'Instrument', opts:['Instrument','Tool','Vehicle','Weapon']}
+  ];
+  let round=0, correct=0, totalMs=0, rStart=0;
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">💬</div>
+        <h2 class="v2i-title">Word Association</h2>
+        <p class="v2i-sub">A word appears — tap its category instantly. Speed and accuracy both contribute to your score.</p>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>🔤</span><span>A word is shown in the centre</span></div>
+          <div class="v2i-rule"><span>🗂️</span><span>Tap the category it belongs to</span></div>
+          <div class="v2i-rule"><span>⚡</span><span>Faster correct answers earn a speed bonus</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>10 rounds total</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = nextRound;
+  }
+
+  function nextRound() {
+    round++;
+    if (round > 10) {
+      const speedBonus = correct ? Math.min(20, Math.round(20 - totalMs/correct/200)) : 0;
+      onComplete({ score: Math.min(100, correct*8 + Math.max(0,speedBonus)), details: { Correct:`${correct}/10`, 'Speed bonus':'+'+Math.max(0,speedBonus) } });
+      return;
+    }
+    const p = PAIRS[(round-1) % PAIRS.length];
+    rStart = Date.now();
+    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    container.innerHTML = `
+      <div class="v2-wa-wrap">
+        <div class="v2-ms-topbar">
+          <span>Round <b>${round}</b>/10</span>
+          <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
+        </div>
+        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-wa-word">${p.word}</div>
+        <p class="v2-ms-prompt">What category does it belong to?</p>
+        <div class="v2-wa-opts">
+          ${p.opts.map(o=>`<div class="v2-wa-btn" data-v="${o}" data-ok="${o===p.correct}">${o}</div>`).join('')}
+        </div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-wa-wrap'));
+    container.querySelectorAll('.v2-wa-btn').forEach(btn=>btn.onclick=()=>{
+      const ms=Date.now()-rStart;
+      container.querySelectorAll('.v2-wa-btn').forEach(x=>{x.style.pointerEvents='none';x.onclick=null;});
+      if(btn.dataset.ok==='true'){btn.classList.add('ok');correct++;totalMs+=ms;}
+      else{btn.classList.add('err');container.querySelector('[data-ok="true"]').classList.add('ok');}
+      setTimeout(nextRound,750);
+    });
+  }
+  intro();
+  return { destroy(){} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 20 v2 — Story Recall
+══════════════════════════════════════════ */
+function createStoryRecallV2(container, onComplete) {
+  const STORIES = [
+    { text:"Maria walked her golden retriever Max through Riverside Park on a Tuesday morning. She found a red umbrella near the fountain and turned it in to the park's security office. The guard thanked her and gave her a small reward coupon for the park café.",
+      questions:[
+        {q:"What was the dog's name?",            opts:["Buddy","Max","Rex","Charlie"],                     ans:1},
+        {q:"Where did Maria walk?",               opts:["City Square","Central Park","Riverside Park","Lake View"], ans:2},
+        {q:"What did she find near the fountain?",opts:["A blue bag","A green wallet","A red umbrella","A yellow hat"], ans:2},
+        {q:"What was Maria's reward?",            opts:["Cash","A trophy","A café coupon","A key"],         ans:2}
+      ]},
+    { text:"Professor Chen delivered her annual climate lecture on Wednesday at the University of Bristol. She showed that ocean temperatures have risen by 1.4 degrees over the past century. Three of her students later launched a startup focused on ocean monitoring technology.",
+      questions:[
+        {q:"Who delivered the lecture?",               opts:["Prof. Khan","Dr. Smith","Prof. Chen","Dean Williams"], ans:2},
+        {q:"Which university hosted the lecture?",     opts:["Oxford","Cambridge","Bristol","Edinburgh"],   ans:2},
+        {q:"By how much have ocean temperatures risen?",opts:["0.8°","1.1°","1.4°","2.0°"],                ans:2},
+        {q:"What did three students create?",          opts:["A research paper","A startup","A museum","A TV show"], ans:1}
+      ]},
+    { text:"James cycled 18 kilometres along the coastal path on Saturday morning, stopping at a small blue lighthouse for photographs. He spotted a pod of dolphins in the bay and shared a video online. The post received over four thousand likes by Sunday evening.",
+      questions:[
+        {q:"How far did James cycle?",         opts:["12 km","15 km","18 km","22 km"],                     ans:2},
+        {q:"What colour was the lighthouse?",  opts:["White","Red","Blue","Yellow"],                       ans:2},
+        {q:"What did James spot in the bay?",  opts:["Whales","Dolphins","Sharks","Seals"],                ans:1},
+        {q:"How many likes did the post get?", opts:["Over 400","Over 4,000","Over 40,000","Over 400,000"],ans:1}
+      ]}
+  ];
+  const s = STORIES[rand(0,STORIES.length-1)];
+  let answers = new Array(s.questions.length).fill(-1), cTimer=null;
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">📚</div>
+        <h2 class="v2i-title">Story Recall</h2>
+        <p class="v2i-sub">Read the short story carefully. After 30 seconds it disappears — then answer 4 memory questions.</p>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>📖</span><span>Focus on names, numbers, and places</span></div>
+          <div class="v2i-rule"><span>⏱</span><span>30-second reading window — use every second</span></div>
+          <div class="v2i-rule"><span>🧠</span><span>Story disappears before questions appear</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>25 points per correct answer (4 questions)</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Reading</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = showStory;
+  }
+
+  function showStory() {
+    let t=30; setHdrTimer('30s');
+    container.innerHTML = `
+      <div class="v2-sr-wrap">
+        <div class="v2-sr-barwrap"><div class="v2-sr-bar" id="sr-bar"></div></div>
+        <div class="v2-sr-lbl">READ carefully — <b id="sr-cd">30</b>s remaining</div>
+        <div class="v2-sr-text">${s.text}</div>
+        <p style="font-size:.72rem;color:var(--txt3);text-align:center;margin:6px 0">Story disappears when time runs out</p>
+      </div>`;
+    fadeIn(container.querySelector('.v2-sr-wrap'));
+    cTimer = setInterval(()=>{
+      t--; const cd=document.getElementById('sr-cd');if(cd)cd.textContent=t;
+      const bar=document.getElementById('sr-bar');if(bar)bar.style.width=(t/30*100)+'%';
+      setHdrTimer(t+'s'); if(t<=0){clearInterval(cTimer);showQuestions();}
+    },1000);
+  }
+
+  function showQuestions() {
+    clearHdr(); let answered=0;
+    container.innerHTML = `
+      <div class="v2-sr-q-wrap">
+        <p class="v2-sr-q-hdr">Answer from memory:</p>
+        ${s.questions.map((q,i)=>`
+          <div class="v2-sr-q-block">
+            <p class="v2-sr-q-text">${i+1}. ${q.q}</p>
+            <div class="v2-sr-opts">
+              ${q.opts.map((o,j)=>`<div class="v2-sr-opt" data-q="${i}" data-a="${j}" data-ok="${j===q.ans}">${o}</div>`).join('')}
+            </div>
+          </div>`).join('')}
+        <button class="v2-start-btn" id="sr-sub" disabled style="margin-top:8px;opacity:.4">Submit Answers</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-sr-q-wrap'));
+    container.querySelectorAll('.v2-sr-opt').forEach(opt=>opt.onclick=()=>{
+      const qi=+opt.dataset.q, wasNew=answers[qi]===-1;
+      container.querySelectorAll(`[data-q="${qi}"]`).forEach(x=>x.classList.remove('sel'));
+      opt.classList.add('sel'); answers[qi]=+opt.dataset.a;
+      if(wasNew){answered++;if(answered===s.questions.length){const sb=document.getElementById('sr-sub');if(sb){sb.disabled=false;sb.style.opacity='1';}}}
+    });
+    document.getElementById('sr-sub').onclick=()=>{
+      let correct=0;
+      s.questions.forEach((q,i)=>{
+        container.querySelectorAll(`[data-q="${i}"]`).forEach(b=>{if(+b.dataset.a===q.ans)b.classList.add('ok');else if(answers[i]===+b.dataset.a)b.classList.add('err');});
+        if(answers[i]===q.ans)correct++;
+      });
+      document.getElementById('sr-sub').style.display='none';
+      setTimeout(()=>onComplete({score:correct*25,details:{Correct:`${correct}/${s.questions.length}`}}),1200);
+    };
+  }
+
+  intro();
+  return { destroy(){clearInterval(cTimer);} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 21 v2 — Symbol Digit Coding
+══════════════════════════════════════════ */
+function createSymbolDigitV2(container, onComplete) {
+  const SYMS = ['★','◆','●','▲','■','♥','✿','⬟'];
+  const KEY = {}; SYMS.forEach((s,i) => KEY[s]=i+1);
+  const TASK = Array.from({length:40},()=>SYMS[rand(0,SYMS.length-1)]);
+  let timeLeft=90, score=0, current=0, gTimer=null, phase='intro';
+
+  function intro() {
+    clearHdr();
+    container.innerHTML = `
+      <div class="v2-intro">
+        <div class="v2i-icon">🔣</div>
+        <h2 class="v2i-title">Symbol Digit Coding</h2>
+        <p class="v2i-sub">Use the key to decode each symbol into its matching digit. Work through as many as you can in 90 seconds.</p>
+        <div class="v2-sdci-key">
+          ${SYMS.map(s=>`<div class="v2-sdci-pair"><div class="v2-sdci-sym">${s}</div><div class="v2-sdci-dig">${KEY[s]}</div></div>`).join('')}
+        </div>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>🔍</span><span>The key is always visible at the top</span></div>
+          <div class="v2i-rule"><span>👆</span><span>Tap the matching digit on the numpad</span></div>
+          <div class="v2i-rule"><span>⏱</span><span>90 seconds · 40 symbols to decode</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Coding</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick = startGame;
+  }
+
+  function startGame() {
+    score=0; current=0; timeLeft=90; phase='play';
+    setHdrTimer('90s'); setHdrScore('0 coded');
+    container.innerHTML = `
+      <div class="v2-sdc-wrap">
+        <div class="v2-sdc-barwrap"><div class="v2-sdc-bar" id="sdc-bar"></div></div>
+        <div class="v2-sdc-hud"><span>⏱ <b id="sdc-tm">90</b>s</span><span>Correct: <b id="sdc-sc" style="color:var(--green)">0</b>/40</span></div>
+        <div class="v2-sdci-key">
+          ${SYMS.map(s=>`<div class="v2-sdci-pair"><div class="v2-sdci-sym">${s}</div><div class="v2-sdci-dig">${KEY[s]}</div></div>`).join('')}
+        </div>
+        <div class="v2-sdc-task">
+          <div class="v2-sdc-sym" id="sdc-sym">${TASK[0]}</div>
+          <div class="v2-sdc-progwrap"><div class="v2-sdc-prog" id="sdc-prog" style="width:0%"></div></div>
+        </div>
+        <div class="v2-sdc-numpad">
+          ${[1,2,3,4,5,6,7,8].map(n=>`<button class="v2-sdc-key" data-n="${n}">${n}</button>`).join('')}
+        </div>
+        <div class="v2-sdc-fb" id="sdc-fb"></div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-sdc-wrap'));
+    container.querySelectorAll('.v2-sdc-key').forEach(b=>b.onclick=()=>tapNum(+b.dataset.n));
+    const kh=e=>{if(e.key>='1'&&e.key<='8'&&phase==='play')tapNum(+e.key);};
+    document.addEventListener('keydown',kh); container._sdcKey=kh;
+    gTimer=setInterval(tick,1000);
+  }
+
+  function tapNum(n) {
+    if(phase!=='play'||current>=TASK.length)return;
+    const sym=TASK[current], exp=KEY[sym];
+    const fb=document.getElementById('sdc-fb');
+    if(n===exp){
+      score++; current++;
+      const sc=document.getElementById('sdc-sc');if(sc)sc.textContent=score;
+      setHdrScore(score+' coded');
+      if(fb){fb.textContent='✅';fb.style.color='var(--green)';}
+      if(current>=TASK.length){finish();return;}
+      const symEl=document.getElementById('sdc-sym');
+      if(symEl){symEl.textContent=TASK[current];symEl.style.animation='none';symEl.offsetHeight;symEl.style.animation='v2Pop .15s';}
+      const prog=document.getElementById('sdc-prog');if(prog)prog.style.width=(current/40*100)+'%';
+    } else {
+      if(fb){fb.textContent=`✗ It's ${exp}`;fb.style.color='var(--red)';}
+    }
+    setTimeout(()=>{const f=document.getElementById('sdc-fb');if(f)f.textContent='';},500);
+  }
+
+  function tick(){
+    timeLeft--;
+    const tm=document.getElementById('sdc-tm');if(tm)tm.textContent=timeLeft;
+    const bar=document.getElementById('sdc-bar');if(bar){bar.style.width=(timeLeft/90*100)+'%';if(timeLeft<=15)bar.style.background='var(--red)';}
+    setHdrTimer(timeLeft+'s');
+    if(timeLeft<=0)finish();
+  }
+
+  function finish(){
+    clearInterval(gTimer);phase='done';
+    if(container._sdcKey){document.removeEventListener('keydown',container._sdcKey);container._sdcKey=null;}
+    onComplete({score:Math.min(100,Math.round(score*2.5)),details:{Correct:score,Total:40,'Time left':timeLeft+'s'}});
+  }
+
+  intro();
+  return { destroy(){clearInterval(gTimer);if(container._sdcKey)document.removeEventListener('keydown',container._sdcKey);} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 22 v2 — Hidden Object Challenge
+══════════════════════════════════════════ */
+function createHiddenObjectV2(container, onComplete) {
+  const TARGETS=[{sym:'🦋',name:'butterfly'},{sym:'🌟',name:'star'},{sym:'🐢',name:'turtle'},{sym:'🍄',name:'mushroom'},{sym:'🦀',name:'crab'}];
+  const NOISE=['🌿','🌱','🍃','🍂','🌾','🍁','🌲','🌳','🌴','🪨','🪵','🌊','💧','🪸'];
+  let round=0, correct=0, rTimer=null;
+
+  function intro(){
+    clearHdr();
+    container.innerHTML=`
+      <div class="v2-intro">
+        <div class="v2i-icon">🔎</div>
+        <h2 class="v2i-title">Hidden Object</h2>
+        <p class="v2i-sub">One special emoji is hiding among nature symbols. Tap it before the timer runs out.</p>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>🎯</span><span>The target is clearly shown at the top</span></div>
+          <div class="v2i-rule"><span>🌿</span><span>It hides among similar-looking nature emojis</span></div>
+          <div class="v2i-rule"><span>⏱</span><span>12 seconds per round — scan fast!</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>5 rounds · 20 points each</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Searching</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick=nextRound;
+  }
+
+  function nextRound(){
+    clearInterval(rTimer); round++;
+    if(round>5){onComplete({score:correct*20,details:{Found:`${correct}/5`}});return;}
+    const t=TARGETS[round-1];
+    const mob=container.clientWidth<420;
+    const COLS=mob?8:12, ROWS=mob?10:8, total=COLS*ROWS;
+    const ti=rand(0,total-1);
+    const grid=Array.from({length:total},(_,i)=>i===ti?t.sym:NOISE[rand(0,NOISE.length-1)]);
+    let timeLeft=12;
+    setHdrTimer(`Round ${round}/5`); setHdrScore(`${correct} found`);
+    container.innerHTML=`
+      <div class="v2-ho-wrap">
+        <div class="v2-ho-barwrap"><div class="v2-ho-bar" id="ho-bar"></div></div>
+        <div class="v2-ho-top">
+          <span>Round <b>${round}</b>/5</span>
+          <span class="v2-ho-target">Find: <span class="v2-ho-tsym">${t.sym}</span> ${t.name}</span>
+          <span class="v2-oot-clock" id="ho-tm">12s</span>
+        </div>
+        <div class="v2-ho-grid" id="ho-grid" style="grid-template-columns:repeat(${COLS},1fr)">
+          ${grid.map((em,i)=>`<div class="v2-ho-cell" data-i="${i}">${em}</div>`).join('')}
+        </div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-ho-wrap'));
+    requestAnimationFrame(()=>{
+      const bar=document.getElementById('ho-bar');
+      if(bar){bar.style.transition='none';bar.style.width='100%';bar.offsetHeight;bar.style.transition='width 12s linear';bar.style.width='0%';}
+    });
+    rTimer=setInterval(()=>{
+      timeLeft--;
+      const tm=document.getElementById('ho-tm');if(tm)tm.textContent=timeLeft+'s';
+      if(timeLeft<=3){const b=document.getElementById('ho-bar');if(b)b.style.background='var(--red)';}
+      if(timeLeft<=0){clearInterval(rTimer);container.querySelectorAll('.v2-ho-cell').forEach(x=>x.onclick=null);const f=container.querySelector(`[data-i="${ti}"]`);if(f)f.classList.add('found');setTimeout(nextRound,800);}
+    },1000);
+    container.querySelectorAll('.v2-ho-cell').forEach(cell=>cell.onclick=()=>{
+      clearInterval(rTimer);
+      container.querySelectorAll('.v2-ho-cell').forEach(x=>x.onclick=null);
+      if(+cell.dataset.i===ti){cell.classList.add('found');correct++;}
+      else{cell.classList.add('wrong');const f=container.querySelector(`[data-i="${ti}"]`);if(f)f.classList.add('found');}
+      setTimeout(nextRound,700);
+    });
+  }
+
+  intro();
+  return { destroy(){clearInterval(rTimer);} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 23 v2 — Direction Memory
+══════════════════════════════════════════ */
+function createDirectionMemoryV2(container, onComplete) {
+  const DIRS={up:'↑',down:'↓',left:'←',right:'→'};
+  const DKEYS=Object.keys(DIRS);
+  let level=4, sequence=[], entered=[], phase='show', sTimer=null, sIdx=0;
+
+  function intro(){
+    clearHdr();
+    container.innerHTML=`
+      <div class="v2-intro">
+        <div class="v2i-icon">🧭</div>
+        <h2 class="v2i-title">Direction Memory</h2>
+        <p class="v2i-sub">Arrows flash one by one — memorise the sequence, then replay it on the D-pad.</p>
+        <div class="v2-dm-demo">
+          ${['↑','→','↓'].map(a=>`<div class="v2-dm-demo-arrow">${a}</div>`).join('<span style="color:var(--txt3);font-size:.9rem">·</span>')}
+        </div>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>👁</span><span>Watch each arrow flash — one at a time</span></div>
+          <div class="v2i-rule"><span>🕹️</span><span>Tap the D-pad buttons in the same order</span></div>
+          <div class="v2i-rule"><span>📈</span><span>Start at 4 arrows — grows on each success</span></div>
+          <div class="v2i-rule"><span>🏆</span><span>Max 12 arrows = perfect score</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Memorising</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick=nextRound;
+  }
+
+  function nextRound(){
+    clearTimeout(sTimer); entered=[]; phase='show'; sIdx=0;
+    sequence=Array.from({length:level},()=>DKEYS[rand(0,3)]);
+    setHdrTimer(`${level} arrows`); setHdrScore('');
+    container.innerHTML=`
+      <div class="v2-dm-wrap">
+        <div class="v2-dm-level">Remember <b>${level}</b> arrows</div>
+        <div class="v2-prog-track" style="width:100%;max-width:320px"><div class="v2-prog-fill" style="width:${((level-4)/8)*100}%"></div></div>
+        <div class="v2-dm-disp" id="dm-disp">👀</div>
+        <div class="v2-dm-trail" id="dm-trail"></div>
+        <div class="v2-dm-dpad" id="dm-dpad" style="opacity:.25;pointer-events:none">
+          <div></div><button class="v2-dm-btn" data-d="up">↑</button><div></div>
+          <button class="v2-dm-btn" data-d="left">←</button><div class="v2-dm-center">🕹</div><button class="v2-dm-btn" data-d="right">→</button>
+          <div></div><button class="v2-dm-btn" data-d="down">↓</button><div></div>
+        </div>
+        <p class="v2-dm-hint" id="dm-hint">Watch carefully…</p>
+      </div>`;
+    fadeIn(container.querySelector('.v2-dm-wrap'));
+    showNext();
+  }
+
+  function showNext(){
+    if(sIdx>=sequence.length){
+      phase='input';
+      const disp=document.getElementById('dm-disp');if(disp)disp.textContent='🕹';
+      const hint=document.getElementById('dm-hint');if(hint)hint.textContent='Now repeat the sequence!';
+      const dpad=document.getElementById('dm-dpad');if(dpad){dpad.style.opacity='1';dpad.style.pointerEvents='auto';}
+      container.querySelectorAll('.v2-dm-btn').forEach(b=>b.onclick=()=>addDir(b.dataset.d));
+      const kh=e=>{const m={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};if(m[e.key]&&phase==='input'){e.preventDefault();addDir(m[e.key]);}};
+      document.addEventListener('keydown',kh);container._dmKey=kh;
+      return;
+    }
+    const d=sequence[sIdx++];
+    const disp=document.getElementById('dm-disp');
+    if(disp){disp.textContent=DIRS[d];disp.style.animation='none';disp.offsetHeight;disp.style.animation='v2Pop .2s';}
+    sTimer=setTimeout(showNext,900);
+  }
+
+  function addDir(d){
+    if(phase!=='input')return;
+    entered.push(d);
+    const trail=document.getElementById('dm-trail');
+    if(trail)trail.innerHTML=entered.map(k=>`<span class="v2-dm-entered">${DIRS[k]}</span>`).join('');
+    if(entered.length===sequence.length){
+      phase='done';
+      if(container._dmKey){document.removeEventListener('keydown',container._dmKey);container._dmKey=null;}
+      const ok=entered.every((v,i)=>v===sequence[i]);
+      const hint=document.getElementById('dm-hint');
+      if(ok){
+        if(hint){hint.textContent='✅ Correct!';hint.style.color='var(--green)';}
+        if(level<12){level++;setTimeout(nextRound,700);}
+        else setTimeout(()=>onComplete({score:100,details:{'Max span':'12','Perfect run':'✅'}}),700);
+      } else {
+        if(hint){hint.textContent=`❌ Was: ${sequence.map(k=>DIRS[k]).join(' ')}`;hint.style.color='var(--red)';}
+        setTimeout(()=>onComplete({score:Math.round(Math.max(0,(level-4)/8*100)),details:{'Max span':level+' arrows',Level:level-3}}),1400);
+      }
+    }
+  }
+
+  intro();
+  return { destroy(){clearTimeout(sTimer);if(container._dmKey)document.removeEventListener('keydown',container._dmKey);} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 24 v2 — Rapid Categorization
+══════════════════════════════════════════ */
+function createRapidCategorizationV2(container, onComplete) {
+  const CATS={
+    Animal:    ['Dog','Cat','Lion','Whale','Eagle','Tiger','Frog','Bear','Wolf','Deer'],
+    Vehicle:   ['Car','Bus','Train','Rocket','Bicycle','Truck','Boat','Plane','Tram','Kayak'],
+    Fruit:     ['Apple','Mango','Grape','Banana','Cherry','Lemon','Peach','Kiwi','Plum','Fig'],
+    Profession:['Doctor','Pilot','Chef','Teacher','Lawyer','Nurse','Farmer','Actor','Judge','Baker']
+  };
+  const CKEYS=Object.keys(CATS);
+  const ALL=CKEYS.flatMap(k=>CATS[k].map(w=>({word:w,cat:k})));
+  let words=[], idx=0, score=0, wrong=0, timeLeft=45, gTimer=null, done=false;
+
+  function intro(){
+    clearHdr();
+    container.innerHTML=`
+      <div class="v2-intro">
+        <div class="v2i-icon">🗂️</div>
+        <h2 class="v2i-title">Rapid Categorization</h2>
+        <p class="v2i-sub">A word flashes — tap its category as fast as you can. 45 seconds, 4 categories.</p>
+        <div class="v2-rc-preview">
+          ${CKEYS.map(k=>`<div class="v2-rc-prev-tag">${k}</div>`).join('')}
+        </div>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>⚡</span><span>Tap instantly — speed matters</span></div>
+          <div class="v2i-rule"><span>✅</span><span>Correct tap: +1 point, next word</span></div>
+          <div class="v2i-rule"><span>❌</span><span>Wrong tap: counted as error, still moves on</span></div>
+          <div class="v2i-rule"><span>⏱</span><span>45-second time limit</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start (45s)</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick=startGame;
+  }
+
+  function startGame(){
+    words=shuffle([...ALL]).slice(0,20);
+    idx=0;score=0;wrong=0;timeLeft=45;done=false;
+    setHdrTimer('45s');setHdrScore('0 correct');
+    container.innerHTML=`
+      <div class="v2-rc-wrap">
+        <div class="v2-rc-barwrap"><div class="v2-rc-bar" id="rc-bar"></div></div>
+        <div class="v2-rc-hud">
+          <span>✅ <b id="rc-sc">0</b></span>
+          <span>⏱ <b id="rc-tm">45</b>s</span>
+          <span>❌ <b id="rc-wr">0</b></span>
+        </div>
+        <div class="v2-rc-word" id="rc-word">—</div>
+        <div class="v2-rc-cats">
+          ${CKEYS.map(c=>`<button class="v2-rc-btn" data-c="${c}">${c}</button>`).join('')}
+        </div>
+        <div class="v2-rc-fb" id="rc-fb"></div>
+      </div>`;
+    fadeIn(container.querySelector('.v2-rc-wrap'));
+    container.querySelectorAll('.v2-rc-btn').forEach(b=>b.onclick=()=>guess(b));
+    gTimer=setInterval(tick,1000);
+    showWord();
+  }
+
+  function showWord(){
+    if(idx>=words.length||done){if(!done)finish();return;}
+    const w=document.getElementById('rc-word');
+    if(w){w.textContent=words[idx].word;w.style.animation='none';w.offsetHeight;w.style.animation='v2FadeUp .15s';}
+  }
+
+  function guess(btn){
+    if(done||idx>=words.length)return;
+    const ok=words[idx].cat===btn.dataset.c;
+    const fb=document.getElementById('rc-fb');
+    if(ok){score++;const sc=document.getElementById('rc-sc');if(sc)sc.textContent=score;btn.classList.add('ok');setTimeout(()=>btn.classList.remove('ok'),280);if(fb){fb.textContent='✅';fb.style.color='var(--green)';}setHdrScore(score+' correct');}
+    else{wrong++;const wr=document.getElementById('rc-wr');if(wr)wr.textContent=wrong;btn.classList.add('err');setTimeout(()=>btn.classList.remove('err'),280);if(fb){fb.textContent='✗ '+words[idx].cat;fb.style.color='var(--red)';}}
+    idx++;setTimeout(()=>{const f=document.getElementById('rc-fb');if(f)f.textContent='';showWord();},300);
+  }
+
+  function tick(){
+    timeLeft--;
+    const tm=document.getElementById('rc-tm');if(tm)tm.textContent=timeLeft;
+    const bar=document.getElementById('rc-bar');if(bar){bar.style.width=(timeLeft/45*100)+'%';if(timeLeft<=10)bar.style.background='var(--red)';}
+    setHdrTimer(timeLeft+'s');
+    if(timeLeft<=0&&!done)finish();
+  }
+
+  function finish(){
+    done=true;clearInterval(gTimer);
+    const total=score+wrong;
+    onComplete({score:Math.min(100,score*5),details:{Correct:score,Wrong:wrong,Accuracy:total?Math.round(score/total*100)+'%':'0%','Words seen':idx}});
+  }
+
+  intro();
+  return { destroy(){clearInterval(gTimer);} };
+}
+
+/* ══════════════════════════════════════════
+   GAME 25 v2 — Sudoku Mini
+══════════════════════════════════════════ */
+function createSudokuMiniV2(container, onComplete) {
+  const SOLS=[
+    [[1,2,3,4],[3,4,1,2],[2,1,4,3],[4,3,2,1]],
+    [[2,1,4,3],[4,3,2,1],[1,2,3,4],[3,4,1,2]],
+    [[3,4,1,2],[1,2,3,4],[4,3,2,1],[2,1,4,3]],
+    [[4,3,2,1],[2,1,4,3],[3,4,1,2],[1,2,3,4]]
+  ];
+  let elapsed=0, gTimer=null, solution=[], puzzle=[], selCell=null;
+
+  function intro(){
+    clearHdr();
+    container.innerHTML=`
+      <div class="v2-intro">
+        <div class="v2i-icon">🔢</div>
+        <h2 class="v2i-title">Sudoku Mini</h2>
+        <p class="v2i-sub">Fill the 4×4 grid so every row, column, and 2×2 box contains digits 1–4 exactly once.</p>
+        <div class="v2-su-demo">
+          ${[[1,2,0,4],[3,4,1,0],[0,1,4,3],[4,3,2,0]].map((row,r)=>`<div class="v2-su-demo-row">${row.map((v,c)=>`<div class="v2-su-demo-cell${v===0?' empty':' given'}">${v||'?'}</div>`).join('')}</div>`).join('')}
+        </div>
+        <div class="v2i-rules">
+          <div class="v2i-rule"><span>↔</span><span>Digits 1–4 in every row</span></div>
+          <div class="v2i-rule"><span>↕</span><span>Digits 1–4 in every column</span></div>
+          <div class="v2i-rule"><span>🟦</span><span>Digits 1–4 in each 2×2 box</span></div>
+          <div class="v2i-rule"><span>⚡</span><span>Faster = higher score</span></div>
+        </div>
+        <button class="v2-start-btn" id="v2-go">▶ Start Puzzle</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-intro'));
+    document.getElementById('v2-go').onclick=buildGame;
+  }
+
+  function buildGame(){
+    solution=SOLS[rand(0,SOLS.length-1)].map(r=>[...r]);
+    puzzle=solution.map(r=>[...r]);
+    let removed=0, tries=0;
+    while(removed<8&&tries<200){const r=rand(0,3),c=rand(0,3);if(puzzle[r][c]!==0){puzzle[r][c]=0;removed++;}tries++;}
+    elapsed=0; selCell=null;
+    setHdrTimer('0:00'); setHdrScore('');
+    renderGame();
+    gTimer=setInterval(()=>{elapsed++;const m=Math.floor(elapsed/60),s=elapsed%60;const t=`${m}:${String(s).padStart(2,'0')}`;setHdrTimer(t);const el=document.getElementById('su-tm');if(el)el.textContent=t;},1000);
+  }
+
+  function renderGame(){
+    container.innerHTML=`
+      <div class="v2-su-wrap">
+        <div class="v2-su-hud"><span>⏱ <b id="su-tm">0:00</b></span><span style="font-size:.78rem;color:var(--txt3)">Tap cell → pick number</span></div>
+        <div class="v2-su-grid" id="su-grid">
+          ${solution.map((row,r)=>row.map((v,c)=>{
+            const given=puzzle[r][c]!==0;
+            return `<div class="v2-su-cell${given?' given':''}" data-r="${r}" data-c="${c}" data-sol="${solution[r][c]}" data-given="${given}">${given?puzzle[r][c]:''}</div>`;
+          }).join('')).join('')}
+        </div>
+        <div class="v2-su-numpad">
+          ${[1,2,3,4].map(n=>`<button class="v2-su-key" data-n="${n}">${n}</button>`).join('')}
+          <button class="v2-su-key del" data-n="0">⌫</button>
+        </div>
+        <button class="v2-start-btn" id="su-check" style="margin-top:8px;width:100%;max-width:260px">✓ Check Solution</button>
+      </div>`;
+    fadeIn(container.querySelector('.v2-su-wrap'));
+
+    container.querySelectorAll('.v2-su-cell').forEach(cell=>{
+      if(cell.dataset.given==='true')return;
+      cell.onclick=()=>{
+        container.querySelectorAll('.v2-su-cell').forEach(x=>x.classList.remove('sel','hl'));
+        cell.classList.add('sel'); selCell=cell;
+        const r=+cell.dataset.r,c=+cell.dataset.c;
+        container.querySelectorAll('.v2-su-cell').forEach(x=>{
+          const xr=+x.dataset.r,xc=+x.dataset.c;
+          if((xr===r||xc===c||Math.floor(xr/2)===Math.floor(r/2)&&Math.floor(xc/2)===Math.floor(c/2))&&!x.classList.contains('sel'))x.classList.add('hl');
+        });
+      };
+    });
+
+    container.querySelectorAll('.v2-su-key').forEach(btn=>btn.onclick=()=>{
+      if(!selCell||selCell.dataset.given==='true')return;
+      const n=+btn.dataset.n;
+      selCell.textContent=n||''; selCell.dataset.val=n; selCell.classList.remove('ok','err');
+    });
+
+    document.getElementById('su-check').onclick=checkSol;
+
+    const kh=e=>{
+      if(!selCell||selCell.dataset.given==='true')return;
+      if(e.key>='1'&&e.key<='4'){selCell.textContent=e.key;selCell.dataset.val=e.key;selCell.classList.remove('ok','err');}
+      else if(e.key==='Backspace'){selCell.textContent='';selCell.dataset.val='0';selCell.classList.remove('ok','err');}
+    };
+    document.addEventListener('keydown',kh); container._suKey=kh;
+  }
+
+  function checkSol(){
+    const blanks=container.querySelectorAll('.v2-su-cell:not([data-given="true"])');
+    let correct=0;
+    blanks.forEach(cell=>{
+      const val=+cell.dataset.val||0, sol=+cell.dataset.sol;
+      cell.classList.remove('ok','err');
+      if(val===sol){cell.classList.add('ok');correct++;}else cell.classList.add('err');
+    });
+    if(correct===blanks.length){
+      clearInterval(gTimer);
+      if(container._suKey){document.removeEventListener('keydown',container._suKey);container._suKey=null;}
+      const score=Math.max(50,100-Math.floor(elapsed/4));
+      setTimeout(()=>onComplete({score,details:{Time:elapsed+'s',Grid:'4×4',Errors:0}}),600);
+    }
+  }
+
+  intro();
+  return { destroy(){clearInterval(gTimer);if(container._suKey)document.removeEventListener('keydown',container._suKey);} };
+}
+
+/* ══════════════════════════════════════════
    GAME 11 v2 — Sequence Prediction
 ══════════════════════════════════════════ */
 function createSequencePredictionV2(container, onComplete) {
