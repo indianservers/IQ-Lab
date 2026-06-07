@@ -1570,3 +1570,114 @@ window.GAMES = [
   { id:'focus-timer',         name:'Focus Timer',              icon:'🎯', category:'attention', desc:'Keep your cursor on the moving dot for 90 seconds.', create:createFocusTimer },
   { id:'speed-comparison',    name:'Speed Comparison',         icon:'⚖', category:'speed',     desc:'Click the larger of two numbers as fast as possible.', create:createSpeedComparison }
 ];
+
+(function buildLevelRegistries() {
+  const baseById = Object.fromEntries(window.GAMES.map(game => [game.id, game]));
+  const make = (level, defs) => defs.map((def, index) => {
+    const base = baseById[def.base];
+    return {
+      ...base,
+      ...def,
+      create: base.create,
+      baseId: base.id,
+      level,
+      order: index + 1
+    };
+  });
+
+  window.GAME_LEVEL_META = {
+    kids: {
+      label: 'Kids',
+      title: 'Kids IQ Quest',
+      subtitle: 'Playful brain games with shapes, pictures, memory, and quick focus.',
+      iqLabel: 'Kids IQ Estimate'
+    },
+    juniors: {
+      label: 'Juniors',
+      title: 'Junior IQ Lab',
+      subtitle: 'School-age reasoning, memory, attention, reading, and speed challenges.',
+      iqLabel: 'Junior IQ Estimate'
+    },
+    seniors: {
+      label: 'Seniors',
+      title: 'Senior Cognitive IQ',
+      subtitle: 'Sharper adult reasoning, processing speed, focus, and memory endurance.',
+      iqLabel: 'Senior IQ Estimate'
+    }
+  };
+
+  window.GAME_LEVELS = {
+    kids: make('kids', [
+      { base:'memory-cards', id:'kids-picture-pairs', name:'Picture Pairs', icon:'🃏', category:'memory', desc:'Flip friendly picture cards and find matching pairs.' },
+      { base:'pattern-memory', id:'kids-light-patterns', name:'Light Patterns', icon:'🔲', category:'memory', desc:'Watch bright tiles and tap the same pattern back.' },
+      { base:'number-memory', id:'kids-number-train', name:'Number Train', icon:'🚂', category:'memory', desc:'Remember short number trains as they grow.' },
+      { base:'direction-memory', id:'kids-arrow-trail', name:'Arrow Trail', icon:'➡️', category:'memory', desc:'Follow and repeat a short trail of arrows.' },
+      { base:'flash-calculation', id:'kids-flash-count', name:'Flash Count', icon:'✨', category:'memory', desc:'Add small numbers that pop onto the screen.' },
+      { base:'face-memory', id:'kids-friendly-faces', name:'Friendly Faces', icon:'🙂', category:'memory', desc:'Study simple faces and spot them again.' },
+      { base:'odd-one-out', id:'kids-animal-odd-one', name:'Animal Odd One', icon:'🐾', category:'speed', desc:'Find the picture that is different from the rest.' },
+      { base:'visual-search', id:'kids-find-the-star', name:'Find the Star', icon:'⭐', category:'speed', desc:'Search a busy grid and tap the target quickly.' },
+      { base:'reaction-time', id:'kids-fast-tap', name:'Fast Tap', icon:'👆', category:'speed', desc:'Tap as soon as the signal says go.' },
+      { base:'mental-math', id:'kids-counting-sprint', name:'Counting Sprint', icon:'🔢', category:'speed', desc:'Solve quick number facts before time runs out.' },
+      { base:'speed-comparison', id:'kids-bigger-number', name:'Bigger Number', icon:'⚖️', category:'speed', desc:'Choose the bigger number as fast as you can.' },
+      { base:'missing-shape', id:'kids-missing-shape', name:'Missing Shape', icon:'🔺', category:'logic', desc:'Pick the shape that completes the picture.' },
+      { base:'sequence-prediction', id:'kids-next-in-line', name:'Next in Line', icon:'➡️', category:'logic', desc:'Guess what comes next in a simple pattern.' },
+      { base:'matrix-reasoning', id:'kids-picture-matrix', name:'Picture Matrix', icon:'🧩', category:'logic', desc:'Complete a small visual puzzle.' },
+      { base:'rotation-puzzle', id:'kids-turn-the-shape', name:'Turn the Shape', icon:'🔄', category:'logic', desc:'Find the shape after it turns around.' },
+      { base:'sudoku-mini', id:'kids-mini-grid', name:'Mini Grid Logic', icon:'🔢', category:'logic', desc:'Fill a tiny number grid using simple rules.' },
+      { base:'tower-logic', id:'kids-tower-builder', name:'Tower Builder', icon:'🗼', category:'logic', desc:'Move pieces carefully to rebuild the tower.' },
+      { base:'simon-game', id:'kids-color-repeat', name:'Color Repeat', icon:'🔴', category:'attention', desc:'Watch colors flash and repeat the sequence.' },
+      { base:'stroop-test', id:'kids-color-focus', name:'Color Focus', icon:'🎨', category:'attention', desc:'Pick the color while ignoring the word.' },
+      { base:'hidden-object', id:'kids-hidden-picture', name:'Hidden Picture', icon:'🔎', category:'attention', desc:'Find a target hiding in a playful scene.' },
+      { base:'peripheral-vision', id:'kids-edge-watch', name:'Edge Watch', icon:'👁', category:'attention', desc:'Keep focus in the middle while spotting edge symbols.' },
+      { base:'trail-making', id:'kids-dot-path', name:'Dot Path', icon:'🧭', category:'attention', desc:'Connect items in the right order.' },
+      { base:'focus-timer', id:'kids-focus-dot', name:'Focus Dot', icon:'🎯', category:'attention', desc:'Track a moving dot and stay focused.' },
+      { base:'fast-reading', id:'kids-word-pop', name:'Word Pop', icon:'📖', category:'reading', desc:'Read quick words and answer simple questions.' },
+      { base:'story-recall', id:'kids-story-pictures', name:'Story Pictures', icon:'📚', category:'reading', desc:'Read a short story and remember the details.' },
+      { base:'word-association', id:'kids-word-sort', name:'Word Sort', icon:'💬', category:'reading', desc:'Put words into the best matching group.' },
+      { base:'rapid-categ', id:'kids-quick-sort', name:'Quick Sort', icon:'🗂', category:'reading', desc:'Sort words quickly by category.' },
+      { base:'symbol-digit', id:'kids-symbol-code', name:'Symbol Code', icon:'🔣', category:'reading', desc:'Use a simple key to match symbols and numbers.' },
+      { base:'dual-nback', id:'kids-back-match', name:'Back Match', icon:'🧩', category:'attention', desc:'Notice when a position matches one seen before.' },
+      { base:'multi-task', id:'kids-two-things', name:'Two Things', icon:'🎭', category:'attention', desc:'Watch words and shapes at the same time.' }
+    ]),
+    juniors: make('juniors', window.GAMES.map(game => ({
+      base: game.id,
+      id: game.id,
+      name: game.name,
+      icon: game.icon,
+      category: game.category,
+      desc: game.desc
+    }))),
+    seniors: make('seniors', [
+      { base:'matrix-reasoning', id:'seniors-advanced-matrix', name:'Advanced Matrix Reasoning', icon:'🧠', category:'logic', desc:'Complete tougher visual matrices using abstract rules.' },
+      { base:'missing-shape', id:'seniors-abstract-completion', name:'Abstract Completion', icon:'🔮', category:'logic', desc:'Infer the missing part of a visual reasoning pattern.' },
+      { base:'sequence-prediction', id:'seniors-complex-sequences', name:'Complex Sequences', icon:'📈', category:'logic', desc:'Predict the next value in mixed logic sequences.' },
+      { base:'rotation-puzzle', id:'seniors-mental-rotation', name:'Mental Rotation', icon:'🔄', category:'logic', desc:'Rotate forms mentally and identify the match.' },
+      { base:'sudoku-mini', id:'seniors-logic-grid', name:'Logic Grid', icon:'🔢', category:'logic', desc:'Use constraints to complete a compact logic grid.' },
+      { base:'tower-logic', id:'seniors-planning-tower', name:'Planning Tower', icon:'🗼', category:'logic', desc:'Plan efficient moves through a tower puzzle.' },
+      { base:'number-memory', id:'seniors-digit-span', name:'Digit Span Challenge', icon:'🔢', category:'memory', desc:'Hold longer digit strings in working memory.' },
+      { base:'pattern-memory', id:'seniors-spatial-span', name:'Spatial Span', icon:'🔲', category:'memory', desc:'Recall increasingly complex spatial patterns.' },
+      { base:'memory-cards', id:'seniors-card-recall', name:'Card Recall', icon:'🃏', category:'memory', desc:'Match cards while minimizing memory errors.' },
+      { base:'flash-calculation', id:'seniors-running-sum', name:'Running Sum', icon:'⚡', category:'memory', desc:'Track fast numbers and keep a mental total.' },
+      { base:'direction-memory', id:'seniors-route-memory', name:'Route Memory', icon:'🧭', category:'memory', desc:'Remember and reproduce direction routes.' },
+      { base:'face-memory', id:'seniors-face-recognition', name:'Face Recognition', icon:'🙂', category:'memory', desc:'Study subtle face patterns and recognize them later.' },
+      { base:'dual-nback', id:'seniors-dual-nback', name:'Dual N-Back', icon:'🧩', category:'attention', desc:'Track position matches across working-memory steps.' },
+      { base:'stroop-test', id:'seniors-inhibition-control', name:'Inhibition Control', icon:'🎨', category:'attention', desc:'Suppress the word meaning and respond to color.' },
+      { base:'multi-task', id:'seniors-divided-attention', name:'Divided Attention', icon:'🎭', category:'attention', desc:'Manage two streams of information at once.' },
+      { base:'trail-making', id:'seniors-trail-switching', name:'Trail Switching', icon:'🗺', category:'attention', desc:'Connect alternating targets with flexible attention.' },
+      { base:'hidden-object', id:'seniors-visual-scan', name:'Visual Scan', icon:'🔎', category:'attention', desc:'Search dense scenes with careful visual control.' },
+      { base:'focus-timer', id:'seniors-sustained-focus', name:'Sustained Focus', icon:'🎯', category:'attention', desc:'Maintain precision on a moving target.' },
+      { base:'reaction-time', id:'seniors-reaction-benchmark', name:'Reaction Benchmark', icon:'⏱', category:'speed', desc:'Measure response speed across multiple trials.' },
+      { base:'visual-search', id:'seniors-symbol-search', name:'Symbol Search', icon:'🎯', category:'speed', desc:'Find targets in dense visual arrays.' },
+      { base:'mental-math', id:'seniors-math-fluency', name:'Math Fluency', icon:'🧮', category:'speed', desc:'Solve arithmetic rapidly with accuracy.' },
+      { base:'speed-comparison', id:'seniors-number-comparison', name:'Number Comparison', icon:'⚖️', category:'speed', desc:'Compare larger values under time pressure.' },
+      { base:'odd-one-out', id:'seniors-visual-discrimination', name:'Visual Discrimination', icon:'🔍', category:'speed', desc:'Spot the subtle outlier in a busy field.' },
+      { base:'fast-reading', id:'seniors-rapid-reading', name:'Rapid Reading', icon:'📖', category:'reading', desc:'Read quickly and answer comprehension checks.' },
+      { base:'story-recall', id:'seniors-detail-recall', name:'Detail Recall', icon:'📚', category:'reading', desc:'Retain details from short written passages.' },
+      { base:'word-association', id:'seniors-semantic-speed', name:'Semantic Speed', icon:'💬', category:'reading', desc:'Choose word relationships quickly and accurately.' },
+      { base:'rapid-categ', id:'seniors-category-fluency', name:'Category Fluency', icon:'🗂', category:'reading', desc:'Classify words under speed pressure.' },
+      { base:'symbol-digit', id:'seniors-coding-speed', name:'Coding Speed', icon:'🔣', category:'reading', desc:'Translate symbols through a key with processing speed.' },
+      { base:'peripheral-vision', id:'seniors-peripheral-control', name:'Peripheral Control', icon:'👁', category:'attention', desc:'Use broad attention without losing central focus.' },
+      { base:'simon-game', id:'seniors-sequence-control', name:'Sequence Control', icon:'🔴', category:'memory', desc:'Repeat longer color sequences with precision.' }
+    ])
+  };
+})();

@@ -17,6 +17,9 @@
     <span class="stat-chip level" id="level-badge">Beginner</span>
   </nav>
   <div class="header-actions">
+    <button class="icon-btn" onclick="App.toggleTheme()" title="Toggle theme" aria-label="Toggle theme">◐</button>
+    <button class="icon-btn" onclick="App.toggleContrast()" title="High contrast" aria-label="High contrast">◩</button>
+    <button class="icon-btn" onclick="App.toggleMotion()" title="Reduced motion" aria-label="Reduced motion">≋</button>
     <button class="icon-btn" onclick="App.showAnalytics()" title="Analytics">📊</button>
     <button class="icon-btn" onclick="App.showProfile()" title="Profile">👤</button>
   </div>
@@ -33,6 +36,40 @@
     </div>
     <div id="daily-iq-card" class="daily-iq-card"></div>
   </section>
+
+  <section class="level-selector" aria-label="IQ level selector">
+    <button class="level-tab" data-level="kids" onclick="App.setIQLevel('kids')">
+      <span>Kids</span><small>Playful basics</small>
+    </button>
+    <button class="level-tab active" data-level="juniors" onclick="App.setIQLevel('juniors')">
+      <span>Juniors</span><small>School reasoning</small>
+    </button>
+    <button class="level-tab" data-level="seniors" onclick="App.setIQLevel('seniors')">
+      <span>Seniors</span><small>Advanced cognition</small>
+    </button>
+  </section>
+
+  <section class="dashboard-tools">
+    <div class="quick-actions">
+      <button class="btn-primary" id="continue-btn" onclick="App.continueLastGame()">Continue Last Game</button>
+      <div class="daily-goal">
+        <div class="daily-goal-top"><span>Daily goal</span><b id="daily-goal-label">0/5</b></div>
+        <div class="goal-track"><div id="daily-goal-fill" class="goal-fill"></div></div>
+      </div>
+    </div>
+    <div class="dashboard-controls">
+      <input id="game-search" class="game-search" type="search" placeholder="Search games" aria-label="Search games">
+      <select id="game-sort" class="game-sort" aria-label="Sort games">
+        <option value="recommended">Recommended</option>
+        <option value="name">Name</option>
+        <option value="best">Best score</option>
+        <option value="difficulty">Difficulty</option>
+        <option value="category">Category</option>
+      </select>
+    </div>
+  </section>
+
+  <section id="recommended-section" class="recommended-section"></section>
 
   <!-- Category filter -->
   <div class="category-bar">

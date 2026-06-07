@@ -30,16 +30,18 @@ const Storage = (() => {
   return {
     getData: get,
 
-    saveScore(gameId, score, category) {
+    saveScore(gameId, score, category, level = 'juniors') {
       const d = get();
-      if (!d.scores[gameId]) d.scores[gameId] = { best: 0, history: [] };
-      const prev = d.scores[gameId].best;
-      if (score > d.scores[gameId].best) d.scores[gameId].best = score;
-      d.scores[gameId].history.push({ score, date: new Date().toISOString() });
-      if (d.scores[gameId].history.length > 50) d.scores[gameId].history.shift();
+      const scoreId = gameId.includes(':') ? gameId : `${level}:${gameId}`;
+      const publicGameId = gameId.includes(':') ? gameId.split(':').slice(1).join(':') : gameId;
+      if (!d.scores[scoreId]) d.scores[scoreId] = { best: 0, history: [] };
+      const prev = d.scores[scoreId].best;
+      if (score > d.scores[scoreId].best) d.scores[scoreId].best = score;
+      d.scores[scoreId].history.push({ score, level, date: new Date().toISOString() });
+      if (d.scores[scoreId].history.length > 50) d.scores[scoreId].history.shift();
 
       // analytics entry
-      d.analytics.push({ gameId, score, category, date: new Date().toISOString() });
+      d.analytics.push({ gameId: publicGameId, score, category, level, date: new Date().toISOString() });
       if (d.analytics.length > 500) d.analytics.shift();
 
       // XP
@@ -50,9 +52,14 @@ const Storage = (() => {
       return { prev, xpGain };
     },
 
-    getBestScore(gameId) {
+    getBestScore(gameId, level) {
       const d = get();
-      return d.scores[gameId] ? d.scores[gameId].best : 0;
+      const activeLevel = level || (() => {
+        try { return localStorage.getItem('iqlab_active_level') || 'juniors'; }
+        catch { return 'juniors'; }
+      })();
+      const scoreId = gameId.includes(':') ? gameId : `${activeLevel}:${gameId}`;
+      return d.scores[scoreId] ? d.scores[scoreId].best : (d.scores[gameId] ? d.scores[gameId].best : 0);
     },
 
     getStreak() {
@@ -76,7 +83,10 @@ const Storage = (() => {
     },
 
     getXP() { return get().xp; },
-    getAnalytics() { return get().analytics; },
+    getAnalytics(level) {
+      const analytics = get().analytics;
+      return level ? analytics.filter(e => (e.level || 'juniors') === level) : analytics;
+    },
 
     saveDailyIQ(iqObj) {
       const d = get();
@@ -90,10 +100,11 @@ const Storage = (() => {
       return d.dailyIQ[key] || null;
     },
 
-    getCategoryScores() {
+    getCategoryScores(level) {
       const d = get();
       const cats = { memory: [], logic: [], speed: [], attention: [], reading: [] };
       d.analytics.forEach(e => {
+        if (level && (e.level || 'juniors') !== level) return;
         if (cats[e.category]) cats[e.category].push(e.score);
       });
       const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
