@@ -26,6 +26,7 @@ const App = (() => {
   const DAILY_GOAL = 5;
   const PREF_KEY = 'iqlab_ui_prefs';
   const LEVEL_KEY = 'iqlab_active_level';
+  const MODULE_CONTROL_KEY = 'iqlab_module_controls';
 
   let currentGame = null;
   let currentController = null;
@@ -55,6 +56,49 @@ const App = (() => {
 
   function escapeHTML(value) {
     return String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  }
+
+  function getModuleControlDefaults(game) {
+    const id = game?.base || game?.id || '';
+    const roundDefaults = {
+      'reaction-time': 5,
+      'hidden-object': 5,
+      'memory-cards': 5,
+      'visual-search': 8,
+      'matrix-reasoning': 8
+    };
+    const durationDefaults = {
+      'multi-task': 30,
+      'story-recall': 30,
+      'rapid-categ': 45,
+      'peripheral-vision': 45,
+      'stroop-test': 60,
+      'mental-math': 60,
+      'symbol-digit': 90
+    };
+    return {
+      difficulty: 'normal',
+      rounds: roundDefaults[id] || 10,
+      duration: durationDefaults[id] || 60
+    };
+  }
+
+  function loadModuleControls(game) {
+    const defaults = getModuleControlDefaults(game);
+    try {
+      const all = JSON.parse(localStorage.getItem(MODULE_CONTROL_KEY)) || {};
+      return Object.assign(defaults, all[game.id] || {});
+    } catch {
+      return defaults;
+    }
+  }
+
+  function saveModuleControls(gameId, options) {
+    try {
+      const all = JSON.parse(localStorage.getItem(MODULE_CONTROL_KEY)) || {};
+      all[gameId] = options;
+      localStorage.setItem(MODULE_CONTROL_KEY, JSON.stringify(all));
+    } catch {}
   }
 
   function todayKey() {
@@ -161,6 +205,7 @@ const App = (() => {
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById('screen-' + id).classList.add('active');
+    document.body.classList.toggle('in-game', id === 'game');
     window.scrollTo(0, 0);
   }
 
@@ -434,6 +479,73 @@ const App = (() => {
     content.innerHTML = '';
     showScreen('game');
 
+    if (game.id === 'fast-reading' || game.baseId === 'fast-reading') {
+      window.IQLAB_GAME_OPTIONS = { difficulty: 'normal', rounds: 10, duration: 60 };
+      currentController = game.create(content, result => handleGameComplete(result));
+      return;
+    }
+
+    showModuleControls(game, content);
+  }
+
+  function showModuleControls(game, content) {
+    const opts = loadModuleControls(game);
+    document.getElementById('ghdr-timer').textContent = 'Setup';
+    document.getElementById('ghdr-score').textContent = 'Controls';
+    content.innerHTML = `
+      <div class="module-controls v2-intro">
+        <div class="v2i-icon">${game.icon}</div>
+        <h2 class="v2i-title">${escapeHTML(game.name)}</h2>
+        <p class="v2i-sub">Tune the challenge before you start. Modules use these controls for timers, rounds, starting level, or puzzle intensity.</p>
+        <div class="module-level-grid" role="group" aria-label="Difficulty level">
+          ${[
+            ['easy', 'Level 1', 'Easy'],
+            ['normal', 'Level 2', 'Normal'],
+            ['hard', 'Level 3', 'Hard']
+          ].map(([value, label, name]) => `
+            <button class="module-level-btn${opts.difficulty === value ? ' active' : ''}" data-difficulty="${value}">
+              <span>${label}</span><strong>${name}</strong>
+            </button>`).join('')}
+        </div>
+        <div class="module-seek">
+          <div class="module-readout"><span>Rounds</span><strong><span id="module-rounds-val">${opts.rounds}</span></strong></div>
+          <input type="range" id="module-rounds" min="3" max="20" value="${opts.rounds}" step="1" aria-label="Rounds">
+          <div class="module-range"><span>3</span><span>20</span></div>
+        </div>
+        <div class="module-seek">
+          <div class="module-readout"><span>Timer</span><strong><span id="module-duration-val">${opts.duration}</span>s</strong></div>
+          <input type="range" id="module-duration" min="15" max="120" value="${opts.duration}" step="5" aria-label="Timer seconds">
+          <div class="module-range"><span>15s</span><span>120s</span></div>
+        </div>
+        <button class="v2-start-btn" id="module-start">▶ Start Module</button>
+      </div>`;
+    const state = Object.assign({}, opts);
+    const rounds = document.getElementById('module-rounds');
+    const duration = document.getElementById('module-duration');
+    const sync = () => {
+      state.rounds = Math.max(3, Math.min(20, +(rounds?.value || state.rounds)));
+      state.duration = Math.max(15, Math.min(120, +(duration?.value || state.duration)));
+      document.getElementById('module-rounds-val').textContent = state.rounds;
+      document.getElementById('module-duration-val').textContent = state.duration;
+    };
+    document.querySelectorAll('.module-level-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.module-level-btn').forEach(x => x.classList.remove('active'));
+        btn.classList.add('active');
+        state.difficulty = btn.dataset.difficulty;
+      };
+    });
+    if (rounds) rounds.oninput = sync;
+    if (duration) duration.oninput = sync;
+    document.getElementById('module-start').onclick = () => startControlledGame(game, content, state);
+  }
+
+  function startControlledGame(game, content, options) {
+    saveModuleControls(game.id, options);
+    window.IQLAB_GAME_OPTIONS = Object.assign({ gameId: game.id }, options);
+    document.getElementById('ghdr-timer').textContent = getEstimatedTime(game);
+    document.getElementById('ghdr-score').textContent = getGameDifficulty(game);
+    content.innerHTML = '';
     currentController = game.create(content, result => handleGameComplete(result));
   }
 

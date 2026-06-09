@@ -13,6 +13,20 @@ function fadeIn(el) {
 function setHdrTimer(txt) { const e = document.getElementById('ghdr-timer'); if (e) e.textContent = txt; }
 function setHdrScore(txt) { const e = document.getElementById('ghdr-score'); if (e) e.textContent = txt; }
 function clearHdr() { setHdrTimer(''); setHdrScore(''); }
+function v2Options() { return window.IQLAB_GAME_OPTIONS || {}; }
+function v2Difficulty() { return v2Options().difficulty || 'normal'; }
+function v2ByDifficulty(values, fallback) {
+  const diff = v2Difficulty();
+  return Object.prototype.hasOwnProperty.call(values, diff) ? values[diff] : fallback;
+}
+function v2Rounds(fallback) {
+  const value = +(v2Options().rounds || fallback);
+  return Math.max(3, Math.min(20, value || fallback));
+}
+function v2Duration(fallback) {
+  const value = +(v2Options().duration || fallback);
+  return Math.max(15, Math.min(120, value || fallback));
+}
 
 /* ══════════════════════════════════════════
    GAME 1 v2 — Fast Reading Challenge
@@ -24,7 +38,13 @@ function createFastReadingV2(container, onComplete) {
     { topic: '💡 Cognitive Flexibility', text: 'Cognitive flexibility is the ability to switch between different concepts or mental tasks. People high in this trait solve problems creatively and adapt quickly to new situations. Learning a new language or musical instrument strengthens this ability significantly over time and keeps the aging brain sharp.', questions: [{ q: 'Cognitive flexibility helps you:', opts: ['Run faster', 'Solve problems creatively', 'Sleep better', 'Eat less'], ans: 1 }, { q: 'Which activity builds cognitive flexibility?', opts: ['Watching TV', 'Sleeping more', 'Learning an instrument', 'Stretching'], ans: 2 }, { q: 'This trait helps people adapt to:', opts: ['New foods', 'New situations', 'New climates', 'New friends'], ans: 1 }] }
   ];
 
-  let wpm = 300, pIdx = rand(0, passages.length - 1), rsvpTimer = null, answers = [], qIdx = 0;
+  const speedLevels = [
+    { label: 'Level 1', name: 'Easy', wpm: 30 },
+    { label: 'Level 2', name: 'Warm Up', wpm: 90 },
+    { label: 'Level 3', name: 'Steady', wpm: 180 },
+    { label: 'Level 4', name: 'Fast', wpm: 300 }
+  ];
+  let wpm = 180, pIdx = rand(0, passages.length - 1), rsvpTimer = null, answers = [], qIdx = 0;
 
   /* PHASE 1 — INTRO */
   function intro() {
@@ -40,20 +60,38 @@ function createFastReadingV2(container, onComplete) {
           <div class="v2i-rule"><span>🧠</span><span>After reading, answer 3 comprehension questions</span></div>
           <div class="v2i-rule"><span>⚡</span><span>Faster speed = more bonus points</span></div>
         </div>
-        <p class="v2i-pick-label">Choose speed:</p>
+        <p class="v2i-pick-label">Choose level:</p>
         <div class="v2-speed-grid">
-          <button class="v2-speed-btn" data-wpm="150"><span class="v2sb-val">150</span><span class="v2sb-lbl">Casual</span></button>
-          <button class="v2-speed-btn active" data-wpm="300"><span class="v2sb-val">300</span><span class="v2sb-lbl">Normal</span></button>
-          <button class="v2-speed-btn" data-wpm="500"><span class="v2sb-val">500</span><span class="v2sb-lbl">Fast</span></button>
-          <button class="v2-speed-btn" data-wpm="800"><span class="v2sb-val">800</span><span class="v2sb-lbl">Turbo</span></button>
+          ${speedLevels.map(level => `
+            <button class="v2-speed-btn${level.wpm === wpm ? ' active' : ''}" data-wpm="${level.wpm}">
+              <span class="v2sb-lvl">${level.label}</span>
+              <span class="v2sb-val">${level.wpm}</span>
+              <span class="v2sb-lbl">${level.name}</span>
+            </button>`).join('')}
+        </div>
+        <div class="v2-speed-seek">
+          <div class="v2-speed-readout"><span>Speed</span><strong><span id="v2-wpm-val">${wpm}</span> WPM</strong></div>
+          <input type="range" id="v2-wpm-sl" min="30" max="300" value="${wpm}" step="10" aria-label="Reading speed words per minute">
+          <div class="v2-speed-range"><span>30 WPM</span><span>300 WPM</span></div>
         </div>
         <button class="v2-start-btn" id="v2-go">▶&thinsp; Start Reading</button>
       </div>`;
     fadeIn(container.querySelector('.v2-intro'));
-    container.querySelectorAll('.v2-speed-btn').forEach(b => b.onclick = () => {
-      container.querySelectorAll('.v2-speed-btn').forEach(x => x.classList.remove('active'));
-      b.classList.add('active'); wpm = +b.dataset.wpm;
-    });
+    const slider = document.getElementById('v2-wpm-sl');
+    const readout = document.getElementById('v2-wpm-val');
+    const syncSpeedUI = (value) => {
+      wpm = Math.max(30, Math.min(300, +value || 30));
+      const activeLevel = speedLevels.reduce((best, level) => (
+        Math.abs(level.wpm - wpm) < Math.abs(best.wpm - wpm) ? level : best
+      ), speedLevels[0]);
+      if (slider) slider.value = wpm;
+      if (readout) readout.textContent = wpm;
+      container.querySelectorAll('.v2-speed-btn').forEach(btn => {
+        btn.classList.toggle('active', +btn.dataset.wpm === activeLevel.wpm);
+      });
+    };
+    container.querySelectorAll('.v2-speed-btn').forEach(b => b.onclick = () => syncSpeedUI(b.dataset.wpm));
+    if (slider) slider.oninput = e => syncSpeedUI(e.target.value);
     document.getElementById('v2-go').onclick = startReading;
   }
 
@@ -150,7 +188,8 @@ function createFastReadingV2(container, onComplete) {
    GAME 2 v2 — Number Memory
 ══════════════════════════════════════════ */
 function createNumberMemoryV2(container, onComplete) {
-  let level = 5, seq = [], entered = [], phase = 'intro';
+  const startDigits = v2ByDifficulty({ easy: 4, normal: 5, hard: 7 }, 5);
+  let level = startDigits, seq = [], entered = [], phase = 'intro';
   const bestSoFar = Storage.getBestScore('number-memory');
 
   /* INTRO */
@@ -178,7 +217,7 @@ function createNumberMemoryV2(container, onComplete) {
   function startLevel() {
     seq = Array.from({ length: level }, () => rand(0, 9));
     entered = [];
-    setHdrScore(`Level ${level - 4}`);
+    setHdrScore(`Level ${Math.max(1, level - startDigits + 1)}`);
     setHdrTimer(`${level} digits`);
     container.innerHTML = `
       <div class="v2-nm-wrap">
@@ -259,8 +298,8 @@ function createNumberMemoryV2(container, onComplete) {
     setTimeout(() => {
       if (ok && level < 20) { level++; startLevel(); }
       else {
-        const score = Math.round(((level - (ok ? 5 : 5)) / 15) * 100);
-        onComplete({ score: Math.min(100, score), details: { 'Max span': level + (ok ? '' : ' (failed)') + ' digits', 'Level': level - 4 } });
+        const score = Math.round(((level - startDigits) / (20 - startDigits)) * 100);
+        onComplete({ score: Math.min(100, score), details: { 'Max span': level + (ok ? '' : ' (failed)') + ' digits', 'Level': Math.max(1, level - startDigits + 1) } });
       }
     }, 900);
   }
@@ -274,6 +313,8 @@ function createNumberMemoryV2(container, onComplete) {
    GAME 3 v2 — Pattern Memory
 ══════════════════════════════════════════ */
 function createPatternMemoryV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
+  const difficultyOffset = v2ByDifficulty({ easy: -1, normal: 0, hard: 1 }, 0);
   let round = 0, totalScore = 0, size = 3, lit = [], selected = [];
 
   function cellPx() {
@@ -303,14 +344,15 @@ function createPatternMemoryV2(container, onComplete) {
 
   function nextRound() {
     round++;
-    if (round > 10) { onComplete({ score: totalScore, details: { Rounds: 10, 'Best grid': size + '×' + size } }); return; }
-    size = round <= 3 ? 3 : round <= 6 ? 4 : round <= 8 ? 5 : 6;
+    if (round > targetRounds) { onComplete({ score: Math.round(totalScore * 10 / targetRounds), details: { Rounds: targetRounds, 'Best grid': size + '×' + size } }); return; }
+    const scaledRound = Math.ceil(round * 10 / targetRounds) + difficultyOffset;
+    size = scaledRound <= 3 ? 3 : scaledRound <= 6 ? 4 : scaledRound <= 8 ? 5 : 6;
     const total = size * size;
     const count = Math.min(Math.ceil(total * 0.35) + Math.floor(round / 3), total - 1);
     lit = shuffle([...Array(total).keys()]).slice(0, count);
     selected = [];
     setHdrScore(`Score ${totalScore}`);
-    setHdrTimer(`Round ${round}/10`);
+    setHdrTimer(`Round ${round}/${targetRounds}`);
     showGrid(true);
   }
 
@@ -319,11 +361,11 @@ function createPatternMemoryV2(container, onComplete) {
     container.innerHTML = `
       <div class="v2-pm-wrap">
         <div class="v2-pm-top">
-          <div class="v2-pm-rounds"><span>Round <b>${round}</b> / 10</span></div>
+          <div class="v2-pm-rounds"><span>Round <b>${round}</b> / ${targetRounds}</span></div>
           <div class="v2-pm-info" id="pm-info">${showLit ? 'Memorise the pattern!' : 'Recreate it!'}</div>
           <div class="v2-pm-score">Score: <b>${totalScore}</b></div>
         </div>
-        <div class="v2-prog-track"><div class="v2-prog-fill" style="width:${(round - 1) / 10 * 100}%"></div></div>
+        <div class="v2-prog-track"><div class="v2-prog-fill" style="width:${(round - 1) / targetRounds * 100}%"></div></div>
         <div class="v2-pm-grid" id="pm-grid" style="grid-template-columns:repeat(${size},${px}px);gap:7px">
           ${Array.from({ length: size * size }, (_, i) => `<div class="v2-pm-cell${showLit && lit.includes(i) ? ' lit' : ''}" data-i="${i}" style="width:${px}px;height:${px}px"></div>`).join('')}
         </div>
@@ -381,6 +423,7 @@ function createPatternMemoryV2(container, onComplete) {
    GAME 4 v2 — Color-Word Conflict (Stroop)
 ══════════════════════════════════════════ */
 function createStroopV2(container, onComplete) {
+  const duration = v2Duration(60);
   const COLORS = [
     { name: 'Red',    hex: '#ef4444', var: '--red' },
     { name: 'Blue',   hex: '#3b82f6', var: '--blue' },
@@ -388,7 +431,7 @@ function createStroopV2(container, onComplete) {
     { name: 'Yellow', hex: '#f59e0b', var: '--yellow' },
     { name: 'Purple', hex: '#8b5cf6', var: '--purple' }
   ];
-  let score = 0, wrong = 0, timeLeft = 60, gameTimer = null, inkColor = null, phase = 'intro';
+  let score = 0, wrong = 0, timeLeft = duration, gameTimer = null, inkColor = null, phase = 'intro';
 
   /* INTRO */
   function intro() {
@@ -431,7 +474,7 @@ function createStroopV2(container, onComplete) {
 
   /* GAME */
   function startGame() {
-    phase = 'play'; score = 0; wrong = 0; timeLeft = 60;
+    phase = 'play'; score = 0; wrong = 0; timeLeft = duration;
     container.innerHTML = `
       <div class="v2-stroop-wrap">
         <div class="v2-stroop-hud">
@@ -443,7 +486,7 @@ function createStroopV2(container, onComplete) {
                 stroke-width="6" stroke-dasharray="163" stroke-dashoffset="0"
                 stroke-linecap="round" transform="rotate(-90 32 32)"/>
             </svg>
-            <span class="v2-sh-timer-txt" id="st-tm">60</span>
+            <span class="v2-sh-timer-txt" id="st-tm">${duration}</span>
           </div>
           <div class="v2-sh-block"><span class="v2-sh-val red" id="st-wr">0</span><span class="v2-sh-lbl">❌ Wrong</span></div>
         </div>
@@ -489,11 +532,11 @@ function createStroopV2(container, onComplete) {
     timeLeft--;
     const tm = document.getElementById('st-tm'); if (tm) tm.textContent = timeLeft;
     const ring = document.getElementById('st-ring');
-    if (ring) ring.style.strokeDashoffset = 163 * (1 - timeLeft / 60);
+    if (ring) ring.style.strokeDashoffset = 163 * (1 - timeLeft / duration);
     if (timeLeft <= 0) {
       clearInterval(gameTimer); phase = 'done';
       const total = score + wrong, acc = total ? Math.round(score / total * 100) : 0;
-      onComplete({ score: Math.round(score * 1.5), details: { Correct: score, Wrong: wrong, Accuracy: acc + '%', 'Per minute': Math.round(score * 60 / 60) } });
+      onComplete({ score: Math.round(score * 90 / duration), details: { Correct: score, Wrong: wrong, Accuracy: acc + '%', 'Per minute': Math.round(score * 60 / duration) } });
     }
   }
 
@@ -506,7 +549,8 @@ function createStroopV2(container, onComplete) {
    GAME 5 v2 — Dual N-Back
 ══════════════════════════════════════════ */
 function createDualNBackV2(container, onComplete) {
-  const N = 2, TRIALS = 24;
+  const N = v2ByDifficulty({ easy: 1, normal: 2, hard: 3 }, 2);
+  const TRIALS = Math.max(N + 6, v2Rounds(10) + N);
   const positions = Array.from({ length: TRIALS }, () => rand(0, 8));
   let trial = 0, hits = 0, falseAlarms = 0, responded = false, trialTimer = null, phase = 'intro';
 
@@ -657,7 +701,9 @@ function rotSVG(pathD, deg, color, sz) {
    GAME 6 v2 — Mental Math Sprint
 ══════════════════════════════════════════ */
 function createMentalMathV2(container, onComplete) {
-  let timeLeft = 60, score = 0, streak = 0, maxStreak = 0;
+  const duration = v2Duration(60);
+  const difficultyShift = v2ByDifficulty({ easy: 4, normal: 0, hard: -4 }, 0);
+  let timeLeft = duration, score = 0, streak = 0, maxStreak = 0;
   let a, b, op, ans, entered = '', gameTimer = null, phase = 'intro';
 
   function intro() {
@@ -691,7 +737,8 @@ function createMentalMathV2(container, onComplete) {
   }
 
   function makeQ() {
-    const ops = score < 5 ? ['+', '−'] : score < 12 ? ['+', '−', '×'] : ['+', '−', '×', '÷'];
+    const challengeScore = score + difficultyShift;
+    const ops = challengeScore < 5 ? ['+', '−'] : challengeScore < 12 ? ['+', '−', '×'] : ['+', '−', '×', '÷'];
     op = ops[rand(0, ops.length - 1)];
     if (op === '+')  { a = rand(10, 99); b = rand(10, 99); ans = a + b; }
     else if (op === '−') { a = rand(20, 99); b = rand(1, a - 1); ans = a - b; }
@@ -700,7 +747,7 @@ function createMentalMathV2(container, onComplete) {
   }
 
   function startGame() {
-    phase = 'play'; score = 0; streak = 0; maxStreak = 0; timeLeft = 60; entered = '';
+    phase = 'play'; score = 0; streak = 0; maxStreak = 0; timeLeft = duration; entered = '';
     makeQ(); renderGame();
     gameTimer = setInterval(tick, 1000);
   }
@@ -712,7 +759,7 @@ function createMentalMathV2(container, onComplete) {
         <div class="v2-mm-timerbar-wrap"><div class="v2-mm-timerbar" id="mm-bar"></div></div>
         <div class="v2-mm-hud">
           <div class="v2-mm-hud-item"><span class="v2-mm-hud-val" id="mm-sc">0</span><span class="v2-mm-hud-lbl">Score</span></div>
-          <div class="v2-mm-hud-item main"><span class="v2-mm-hud-val cyan" id="mm-tm">60</span><span class="v2-mm-hud-lbl">Seconds</span></div>
+          <div class="v2-mm-hud-item main"><span class="v2-mm-hud-val cyan" id="mm-tm">${duration}</span><span class="v2-mm-hud-lbl">Seconds</span></div>
           <div class="v2-mm-hud-item"><span class="v2-mm-hud-val yellow" id="mm-st"></span><span class="v2-mm-hud-lbl">Streak</span></div>
         </div>
         <div class="v2-mm-problem" id="mm-prob">${a} <span class="v2-mm-op">${op}</span> ${b} <span class="v2-mm-eq">=</span> <span class="v2-mm-q">?</span></div>
@@ -777,13 +824,13 @@ function createMentalMathV2(container, onComplete) {
     const tm = document.getElementById('mm-tm'); if (tm) tm.textContent = timeLeft;
     const bar = document.getElementById('mm-bar');
     if (bar) {
-      bar.style.width = (timeLeft / 60 * 100) + '%';
+      bar.style.width = (timeLeft / duration * 100) + '%';
       if (timeLeft <= 10) bar.style.background = 'var(--red)';
       else if (timeLeft <= 20) bar.style.background = 'var(--yellow)';
     }
     if (timeLeft <= 0) {
       clearInterval(gameTimer); phase = 'done';
-      onComplete({ score: Math.min(100, score * 5), details: { Correct: score, 'Best streak': maxStreak + ' 🔥', Operations: score >= 12 ? '+−×÷' : score >= 5 ? '+−×' : '+−' } });
+      onComplete({ score: Math.min(100, Math.round(score * 300 / duration)), details: { Correct: score, 'Best streak': maxStreak + ' 🔥', Operations: score + difficultyShift >= 12 ? '+−×÷' : score + difficultyShift >= 5 ? '+−×' : '+−' } });
     }
   }
 
@@ -799,6 +846,7 @@ function createMentalMathV2(container, onComplete) {
    GAME 7 v2 — Missing Shape
 ══════════════════════════════════════════ */
 function createMissingShapeV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
   const SHAPES = ['circle','square','triangle','diamond','star','hexagon','pentagon','cross'];
   const COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899'];
   let round = 0, correct = 0;
@@ -842,17 +890,17 @@ function createMissingShapeV2(container, onComplete) {
   }
 
   function nextRound() {
-    round++; if (round > 10) { onComplete({ score: correct * 10, details: { Correct: `${correct}/10` } }); return; }
+    round++; if (round > targetRounds) { onComplete({ score: Math.round(correct * 100 / targetRounds), details: { Correct: `${correct}/${targetRounds}` } }); return; }
     const { matrix, ans, choices } = makeMatrix();
     const sz = Math.min(54, Math.floor((Math.min(container.clientWidth, 340) - 40) / 3));
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
     container.innerHTML = `
       <div class="v2-ms-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b> / 10</span>
+          <span>Round <b>${round}</b> / ${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:340px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:340px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-ms-matrix" style="grid-template-columns:repeat(3,${sz+14}px);gap:7px">
           ${matrix.map((row, r) => row.map((cell, c) => {
             const miss = r === 2 && c === 2;
@@ -885,6 +933,7 @@ function createMissingShapeV2(container, onComplete) {
    GAME 8 v2 — Matrix Reasoning
 ══════════════════════════════════════════ */
 function createMatrixReasoningV2(container, onComplete) {
+  const targetRounds = v2Rounds(8);
   const SHAPES = ['circle','square','triangle','diamond','star','pentagon'];
   const COLORS = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899'];
   let round = 0, correct = 0;
@@ -936,18 +985,18 @@ function createMatrixReasoningV2(container, onComplete) {
   }
 
   function nextRound() {
-    round++; if (round > 8) { onComplete({ score: correct * 12 + 4, details: { Correct: `${correct}/8` } }); return; }
+    round++; if (round > targetRounds) { onComplete({ score: Math.round(correct * 100 / targetRounds), details: { Correct: `${correct}/${targetRounds}` } }); return; }
     const { m, ans, wrongs } = makeMatrix();
     const choices = shuffle([ans, ...wrongs]);
     const sz = Math.min(50, Math.floor((Math.min(container.clientWidth, 320) - 36) / 3));
-    setHdrTimer(`Round ${round}/8`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
     container.innerHTML = `
       <div class="v2-ms-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b> / 8</span>
+          <span>Round <b>${round}</b> / ${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:320px"><div class="v2-prog-fill" style="width:${(round-1)/8*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:320px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-ms-matrix" style="grid-template-columns:repeat(3,${sz+14}px);gap:7px">
           ${m.map((row, r) => row.map((cell, c) => {
             const miss = r === 2 && c === 2;
@@ -980,6 +1029,7 @@ function createMatrixReasoningV2(container, onComplete) {
    GAME 9 v2 — Rotation Puzzle
 ══════════════════════════════════════════ */
 function createRotationPuzzleV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
   let round = 0, correct = 0;
   const PALETTE = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444'];
 
@@ -1009,21 +1059,21 @@ function createRotationPuzzleV2(container, onComplete) {
   }
 
   function nextRound() {
-    round++; if (round > 10) { onComplete({ score: correct * 10, details: { Correct: `${correct}/10` } }); return; }
+    round++; if (round > targetRounds) { onComplete({ score: Math.round(correct * 100 / targetRounds), details: { Correct: `${correct}/${targetRounds}` } }); return; }
     const path = ROT_SHAPES[rand(0, ROT_SHAPES.length - 1)];
     const color = PALETTE[rand(0, PALETTE.length - 1)];
     const targetDeg = [90, 180, 270][rand(0, 2)];
     const allDegs = [0, 90, 180, 270];
     const choices = shuffle(allDegs.map(deg => ({ deg, ok: deg === targetDeg })));
     const sz = Math.min(90, Math.floor((Math.min(container.clientWidth, 380) - 32) / 2) - 20);
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
     container.innerHTML = `
       <div class="v2-rot-wrap">
         <div class="v2-rot-topbar">
-          <span>Round <b>${round}</b> / 10</span>
+          <span>Round <b>${round}</b> / ${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-rot-original">
           <p>Original shape</p>
           <div class="v2-rot-orig-box">${rotSVG(path, 0, color, sz + 10)}</div>
@@ -1053,6 +1103,8 @@ function createRotationPuzzleV2(container, onComplete) {
    GAME 10 v2 — Odd One Out
 ══════════════════════════════════════════ */
 function createOddOneOutV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
+  const timerAdjust = v2ByDifficulty({ easy: 2, normal: 0, hard: -1 }, 0);
   const LEVELS = [
     { sets:[['🐱','🐶'],['🍎','🚗'],['⭕','⬛'],['🌸','🌴']], cols:4, rows:3, secs:7 },
     { sets:[['🐯','🦁'],['🍊','🍋'],['🚗','🚌'],['⭐','💫']], cols:4, rows:4, secs:6 },
@@ -1089,22 +1141,22 @@ function createOddOneOutV2(container, onComplete) {
 
   function nextRound() {
     clearInterval(roundTimer); answered = false;
-    round++; if (round > 10) { finish(); return; }
-    const lvl = LEVELS[Math.min(Math.floor((round - 1) / 2), LEVELS.length - 1)];
+    round++; if (round > targetRounds) { finish(); return; }
+    const lvl = LEVELS[Math.min(Math.floor(((round - 1) * 10 / targetRounds) / 2), LEVELS.length - 1)];
     const [base, oddEm] = lvl.sets[rand(0, lvl.sets.length - 1)];
     const total = lvl.cols * lvl.rows;
     oddIdx = rand(0, total - 1);
     const grid = Array.from({ length: total }, (_, i) => i === oddIdx ? oddEm : base);
-    timeLeft = lvl.secs;
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`Score ${score}`);
+    timeLeft = Math.max(2, lvl.secs + timerAdjust);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`Score ${score}`);
 
     container.innerHTML = `
       <div class="v2-oot-wrap">
         <div class="v2-oot-timerbar-wrap">
-          <div class="v2-oot-timerbar" id="oot-bar" style="width:100%;transition:width ${lvl.secs}s linear"></div>
+          <div class="v2-oot-timerbar" id="oot-bar" style="width:100%;transition:width ${timeLeft}s linear"></div>
         </div>
         <div class="v2-oot-top">
-          <span>Round <b>${round}</b>/10</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span class="v2-oot-clock" id="oot-tm">${timeLeft}s</span>
           <span>Score: <b style="color:var(--yellow)">${score}</b></span>
         </div>
@@ -1117,7 +1169,7 @@ function createOddOneOutV2(container, onComplete) {
     // Start timer bar animation (CSS transition)
     requestAnimationFrame(() => {
       const bar = document.getElementById('oot-bar');
-      if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; bar.offsetHeight; bar.style.transition = `width ${lvl.secs}s linear`; bar.style.width = '0%'; }
+      if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; bar.offsetHeight; bar.style.transition = `width ${timeLeft}s linear`; bar.style.width = '0%'; }
     });
 
     roundTimer = setInterval(() => {
@@ -1153,7 +1205,7 @@ function createOddOneOutV2(container, onComplete) {
   }
 
   function finish() {
-    onComplete({ score: Math.min(100, score * 10), details: { Score: score + '/10', Rounds: 10 } });
+    onComplete({ score: Math.min(100, Math.round(score * 100 / targetRounds)), details: { Score: score + '/' + targetRounds, Rounds: targetRounds } });
   }
   function cleanup() { clearInterval(roundTimer); }
   intro();
@@ -1164,6 +1216,8 @@ function createOddOneOutV2(container, onComplete) {
    GAME 16 v2 — Simon Game
 ══════════════════════════════════════════ */
 function createSimonV2(container, onComplete) {
+  const targetLevel = Math.max(3, Math.min(20, v2Rounds(12)));
+  const startLevel = v2ByDifficulty({ easy: 0, normal: 0, hard: 2 }, 0);
   const COLORS = ['red','green','blue','yellow'];
   const PC = { red:'#ef4444', green:'#10b981', blue:'#3b82f6', yellow:'#f59e0b' };
   let sequence=[], playerIdx=0, level=0, locked=true, gone=false;
@@ -1187,7 +1241,7 @@ function createSimonV2(container, onComplete) {
         <button class="v2-start-btn" id="v2-go">▶ Start Simon</button>
       </div>`;
     fadeIn(container.querySelector('.v2-intro'));
-    document.getElementById('v2-go').onclick = () => { level=0; sequence=[]; renderArena(); setTimeout(nextLevel,300); };
+    document.getElementById('v2-go').onclick = () => { level=startLevel; sequence=[]; renderArena(); setTimeout(nextLevel,300); };
   }
 
   function renderArena() {
@@ -1242,7 +1296,7 @@ function createSimonV2(container, onComplete) {
     } else {
       locked = true;
       const msg = document.getElementById('si-msg'); if (msg) { msg.textContent = '❌ Wrong!'; msg.style.color='var(--red)'; }
-      setTimeout(() => { if (!gone) onComplete({ score: Math.min(100,Math.max(0,(level-1)*8)), details:{ Level:level, 'Sequence length':sequence.length } }); }, 1000);
+      setTimeout(() => { if (!gone) onComplete({ score: Math.min(100,Math.max(0,(level-1)*100/targetLevel)), details:{ Level:level, 'Sequence length':sequence.length } }); }, 1000);
     }
   }
 
@@ -1251,7 +1305,7 @@ function createSimonV2(container, onComplete) {
     level++; sequence.push(COLORS[rand(0,3)]);
     const lv = document.getElementById('si-lv'); if (lv) lv.textContent = `Level ${level}`;
     setHdrTimer(`Level ${level}`);
-    if (level > 12) { onComplete({ score:100, details:{ Level:level, 'Perfect run':'✅' } }); return; }
+    if (level > targetLevel) { onComplete({ score:100, details:{ Level:level, 'Perfect run':'✅' } }); return; }
     playSeq();
   }
 
@@ -1263,6 +1317,7 @@ function createSimonV2(container, onComplete) {
    GAME 17 v2 — Reaction Time Test
 ══════════════════════════════════════════ */
 function createReactionTimeV2(container, onComplete) {
+  const targetTrials = v2Rounds(5);
   let trial=0, times=[], phase='idle', to=null;
 
   function intro() {
@@ -1285,11 +1340,11 @@ function createReactionTimeV2(container, onComplete) {
   }
 
   function renderTrial() {
-    setHdrTimer(`Trial ${trial+1}/5`); setHdrScore('');
+    setHdrTimer(`Trial ${trial+1}/${targetTrials}`); setHdrScore('');
     container.innerHTML = `
       <div class="v2-rt-wrap">
         <div class="v2-rt-dots">
-          ${Array.from({length:5},(_,i)=>`<div class="v2-rt-dot${i<trial?' done':i===trial?' active':''}"></div>`).join('')}
+          ${Array.from({length:targetTrials},(_,i)=>`<div class="v2-rt-dot${i<trial?' done':i===trial?' active':''}"></div>`).join('')}
         </div>
         <div class="v2-rt-screen wait" id="rt-screen">
           <div class="v2-rt-label">Tap to start</div>
@@ -1325,8 +1380,8 @@ function createReactionTimeV2(container, onComplete) {
     } else if (phase === 'go') {
       const rt = Date.now() - screen._t;
       times.push(rt); trial++;
-      if (trial >= 5) {
-        const avg = Math.round(times.reduce((a,b)=>a+b)/5);
+      if (trial >= targetTrials) {
+        const avg = Math.round(times.reduce((a,b)=>a+b)/targetTrials);
         const score = Math.min(100, Math.max(0, Math.round(100-(avg-150)/3)));
         phase = 'done';
         onComplete({ score, details:{ Average:avg+'ms', Best:Math.min(...times)+'ms', Worst:Math.max(...times)+'ms' } });
@@ -1344,9 +1399,10 @@ function createReactionTimeV2(container, onComplete) {
    GAME 18 v2 — Multi-Task Challenge
 ══════════════════════════════════════════ */
 function createMultiTaskV2(container, onComplete) {
+  const duration = v2Duration(30);
   const WORDS  = ['Sun','Moon','Rain','Tree','Fire','Wave','Star','Wind','Rock','Lake','Cloud','Snow'];
   const SHAPES = ['🔴','🟠','🟡','🟢','🔵','🟣'];
-  let shapeCount=0, wordList=[], sIdx=0, wIdx=0, timeLeft=30, done=false;
+  let shapeCount=0, wordList=[], sIdx=0, wIdx=0, timeLeft=duration, done=false;
   let wTimer=null, sTimer=null, cTimer=null;
 
   function intro() {
@@ -1371,12 +1427,12 @@ function createMultiTaskV2(container, onComplete) {
   function startGame() {
     wordList = shuffle([...WORDS]).slice(0,8);
     const shapeList = Array.from({length:18},()=>SHAPES[rand(0,SHAPES.length-1)]);
-    shapeCount=0; sIdx=0; wIdx=0; timeLeft=30; done=false;
-    setHdrTimer('30s');
+    shapeCount=0; sIdx=0; wIdx=0; timeLeft=duration; done=false;
+    setHdrTimer(duration + 's');
     container.innerHTML = `
       <div class="v2-mt-wrap">
         <div class="v2-mt-timerbar-wrap"><div class="v2-mt-timerbar" id="mt-bar"></div></div>
-        <div class="v2-mt-hud"><span>⏱ <b id="mt-tm">30</b>s</span><span style="font-size:.74rem;color:var(--txt3)">READ words + COUNT shapes</span></div>
+        <div class="v2-mt-hud"><span>⏱ <b id="mt-tm">${duration}</b>s</span><span style="font-size:.74rem;color:var(--txt3)">READ words + COUNT shapes</span></div>
         <div class="v2-mt-panels">
           <div class="v2-mt-panel"><div class="v2-mt-panel-lbl">📝 Word</div><div class="v2-mt-word" id="mt-word">—</div></div>
           <div class="v2-mt-divider"></div>
@@ -1388,7 +1444,7 @@ function createMultiTaskV2(container, onComplete) {
     sTimer = setInterval(()=>{ const s=document.getElementById('mt-shape'); if(!s)return; if(sIdx<shapeList.length){s.textContent=shapeList[sIdx++];shapeCount++;s.style.animation='none';s.offsetHeight;s.style.animation='v2Pop .15s';const sc=document.getElementById('mt-sc');if(sc)sc.textContent=shapeCount+' shown';}},1900);
     cTimer = setInterval(()=>{
       timeLeft--; const tm=document.getElementById('mt-tm');if(tm)tm.textContent=timeLeft;
-      const bar=document.getElementById('mt-bar');if(bar)bar.style.width=(timeLeft/30*100)+'%';
+      const bar=document.getElementById('mt-bar');if(bar)bar.style.width=(timeLeft/duration*100)+'%';
       setHdrTimer(timeLeft+'s');
       if(timeLeft<=0&&!done){done=true;clearAll();showQuestions();}
     },1000);
@@ -1448,6 +1504,7 @@ function createMultiTaskV2(container, onComplete) {
    GAME 19 v2 — Word Association Speed
 ══════════════════════════════════════════ */
 function createWordAssociationV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
   const PAIRS = [
     {word:'Apple',   correct:'Fruit',      opts:['Fruit','Engine','Planet','Tool']},
     {word:'Car',     correct:'Vehicle',    opts:['Animal','Vehicle','Emotion','Color']},
@@ -1485,21 +1542,21 @@ function createWordAssociationV2(container, onComplete) {
 
   function nextRound() {
     round++;
-    if (round > 10) {
+    if (round > targetRounds) {
       const speedBonus = correct ? Math.min(20, Math.round(20 - totalMs/correct/200)) : 0;
-      onComplete({ score: Math.min(100, correct*8 + Math.max(0,speedBonus)), details: { Correct:`${correct}/10`, 'Speed bonus':'+'+Math.max(0,speedBonus) } });
+      onComplete({ score: Math.min(100, Math.round(correct * 80 / targetRounds) + Math.max(0,speedBonus)), details: { Correct:`${correct}/${targetRounds}`, 'Speed bonus':'+'+Math.max(0,speedBonus) } });
       return;
     }
     const p = PAIRS[(round-1) % PAIRS.length];
     rStart = Date.now();
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
     container.innerHTML = `
       <div class="v2-wa-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b>/10</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-wa-word">${p.word}</div>
         <p class="v2-ms-prompt">What category does it belong to?</p>
         <div class="v2-wa-opts">
@@ -1523,6 +1580,7 @@ function createWordAssociationV2(container, onComplete) {
    GAME 20 v2 — Story Recall
 ══════════════════════════════════════════ */
 function createStoryRecallV2(container, onComplete) {
+  const duration = v2Duration(30);
   const STORIES = [
     { text:"Maria walked her golden retriever Max through Riverside Park on a Tuesday morning. She found a red umbrella near the fountain and turned it in to the park's security office. The guard thanked her and gave her a small reward coupon for the park café.",
       questions:[
@@ -1569,18 +1627,18 @@ function createStoryRecallV2(container, onComplete) {
   }
 
   function showStory() {
-    let t=30; setHdrTimer('30s');
+    let t=duration; setHdrTimer(duration + 's');
     container.innerHTML = `
       <div class="v2-sr-wrap">
         <div class="v2-sr-barwrap"><div class="v2-sr-bar" id="sr-bar"></div></div>
-        <div class="v2-sr-lbl">READ carefully — <b id="sr-cd">30</b>s remaining</div>
+        <div class="v2-sr-lbl">READ carefully — <b id="sr-cd">${duration}</b>s remaining</div>
         <div class="v2-sr-text">${s.text}</div>
         <p style="font-size:.72rem;color:var(--txt3);text-align:center;margin:6px 0">Story disappears when time runs out</p>
       </div>`;
     fadeIn(container.querySelector('.v2-sr-wrap'));
     cTimer = setInterval(()=>{
       t--; const cd=document.getElementById('sr-cd');if(cd)cd.textContent=t;
-      const bar=document.getElementById('sr-bar');if(bar)bar.style.width=(t/30*100)+'%';
+      const bar=document.getElementById('sr-bar');if(bar)bar.style.width=(t/duration*100)+'%';
       setHdrTimer(t+'s'); if(t<=0){clearInterval(cTimer);showQuestions();}
     },1000);
   }
@@ -1625,10 +1683,11 @@ function createStoryRecallV2(container, onComplete) {
    GAME 21 v2 — Symbol Digit Coding
 ══════════════════════════════════════════ */
 function createSymbolDigitV2(container, onComplete) {
+  const duration = v2Duration(90);
   const SYMS = ['★','◆','●','▲','■','♥','✿','⬟'];
   const KEY = {}; SYMS.forEach((s,i) => KEY[s]=i+1);
   const TASK = Array.from({length:40},()=>SYMS[rand(0,SYMS.length-1)]);
-  let timeLeft=90, score=0, current=0, gTimer=null, phase='intro';
+  let timeLeft=duration, score=0, current=0, gTimer=null, phase='intro';
 
   function intro() {
     clearHdr();
@@ -1652,12 +1711,12 @@ function createSymbolDigitV2(container, onComplete) {
   }
 
   function startGame() {
-    score=0; current=0; timeLeft=90; phase='play';
-    setHdrTimer('90s'); setHdrScore('0 coded');
+    score=0; current=0; timeLeft=duration; phase='play';
+    setHdrTimer(duration + 's'); setHdrScore('0 coded');
     container.innerHTML = `
       <div class="v2-sdc-wrap">
         <div class="v2-sdc-barwrap"><div class="v2-sdc-bar" id="sdc-bar"></div></div>
-        <div class="v2-sdc-hud"><span>⏱ <b id="sdc-tm">90</b>s</span><span>Correct: <b id="sdc-sc" style="color:var(--green)">0</b>/40</span></div>
+        <div class="v2-sdc-hud"><span>⏱ <b id="sdc-tm">${duration}</b>s</span><span>Correct: <b id="sdc-sc" style="color:var(--green)">0</b>/40</span></div>
         <div class="v2-sdci-key">
           ${SYMS.map(s=>`<div class="v2-sdci-pair"><div class="v2-sdci-sym">${s}</div><div class="v2-sdci-dig">${KEY[s]}</div></div>`).join('')}
         </div>
@@ -1699,7 +1758,7 @@ function createSymbolDigitV2(container, onComplete) {
   function tick(){
     timeLeft--;
     const tm=document.getElementById('sdc-tm');if(tm)tm.textContent=timeLeft;
-    const bar=document.getElementById('sdc-bar');if(bar){bar.style.width=(timeLeft/90*100)+'%';if(timeLeft<=15)bar.style.background='var(--red)';}
+    const bar=document.getElementById('sdc-bar');if(bar){bar.style.width=(timeLeft/duration*100)+'%';if(timeLeft<=15)bar.style.background='var(--red)';}
     setHdrTimer(timeLeft+'s');
     if(timeLeft<=0)finish();
   }
@@ -1718,6 +1777,8 @@ function createSymbolDigitV2(container, onComplete) {
    GAME 22 v2 — Hidden Object Challenge
 ══════════════════════════════════════════ */
 function createHiddenObjectV2(container, onComplete) {
+  const targetRounds = v2Rounds(5);
+  const timerAdjust = v2ByDifficulty({ easy: 3, normal: 0, hard: -2 }, 0);
   const TARGETS=[{sym:'🦋',name:'butterfly'},{sym:'🌟',name:'star'},{sym:'🐢',name:'turtle'},{sym:'🍄',name:'mushroom'},{sym:'🦀',name:'crab'}];
   const NOISE=['🌿','🌱','🍃','🍂','🌾','🍁','🌲','🌳','🌴','🪨','🪵','🌊','💧','🪸'];
   let round=0, correct=0, rTimer=null;
@@ -1743,21 +1804,21 @@ function createHiddenObjectV2(container, onComplete) {
 
   function nextRound(){
     clearInterval(rTimer); round++;
-    if(round>5){onComplete({score:correct*20,details:{Found:`${correct}/5`}});return;}
-    const t=TARGETS[round-1];
+    if(round>targetRounds){onComplete({score:Math.round(correct*100/targetRounds),details:{Found:`${correct}/${targetRounds}`}});return;}
+    const t=TARGETS[(round-1) % TARGETS.length];
     const mob=container.clientWidth<420;
     const COLS=mob?8:12, ROWS=mob?10:8, total=COLS*ROWS;
     const ti=rand(0,total-1);
     const grid=Array.from({length:total},(_,i)=>i===ti?t.sym:NOISE[rand(0,NOISE.length-1)]);
-    let timeLeft=12;
-    setHdrTimer(`Round ${round}/5`); setHdrScore(`${correct} found`);
+    let timeLeft=Math.max(4, 12 + timerAdjust);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} found`);
     container.innerHTML=`
       <div class="v2-ho-wrap">
         <div class="v2-ho-barwrap"><div class="v2-ho-bar" id="ho-bar"></div></div>
         <div class="v2-ho-top">
-          <span>Round <b>${round}</b>/5</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span class="v2-ho-target">Find: <span class="v2-ho-tsym">${t.sym}</span> ${t.name}</span>
-          <span class="v2-oot-clock" id="ho-tm">12s</span>
+          <span class="v2-oot-clock" id="ho-tm">${timeLeft}s</span>
         </div>
         <div class="v2-ho-grid" id="ho-grid" style="grid-template-columns:repeat(${COLS},1fr)">
           ${grid.map((em,i)=>`<div class="v2-ho-cell" data-i="${i}">${em}</div>`).join('')}
@@ -1766,7 +1827,7 @@ function createHiddenObjectV2(container, onComplete) {
     fadeIn(container.querySelector('.v2-ho-wrap'));
     requestAnimationFrame(()=>{
       const bar=document.getElementById('ho-bar');
-      if(bar){bar.style.transition='none';bar.style.width='100%';bar.offsetHeight;bar.style.transition='width 12s linear';bar.style.width='0%';}
+      if(bar){bar.style.transition='none';bar.style.width='100%';bar.offsetHeight;bar.style.transition=`width ${timeLeft}s linear`;bar.style.width='0%';}
     });
     rTimer=setInterval(()=>{
       timeLeft--;
@@ -1791,9 +1852,10 @@ function createHiddenObjectV2(container, onComplete) {
    GAME 23 v2 — Direction Memory
 ══════════════════════════════════════════ */
 function createDirectionMemoryV2(container, onComplete) {
+  const startLevel = v2ByDifficulty({ easy: 3, normal: 4, hard: 6 }, 4);
   const DIRS={up:'↑',down:'↓',left:'←',right:'→'};
   const DKEYS=Object.keys(DIRS);
-  let level=4, sequence=[], entered=[], phase='show', sTimer=null, sIdx=0;
+  let level=startLevel, sequence=[], entered=[], phase='show', sTimer=null, sIdx=0;
 
   function intro(){
     clearHdr();
@@ -1824,7 +1886,7 @@ function createDirectionMemoryV2(container, onComplete) {
     container.innerHTML=`
       <div class="v2-dm-wrap">
         <div class="v2-dm-level">Remember <b>${level}</b> arrows</div>
-        <div class="v2-prog-track" style="width:100%;max-width:320px"><div class="v2-prog-fill" style="width:${((level-4)/8)*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:320px"><div class="v2-prog-fill" style="width:${((level-startLevel)/Math.max(1,12-startLevel))*100}%"></div></div>
         <div class="v2-dm-disp" id="dm-disp">👀</div>
         <div class="v2-dm-trail" id="dm-trail"></div>
         <div class="v2-dm-dpad" id="dm-dpad" style="opacity:.25;pointer-events:none">
@@ -1871,7 +1933,7 @@ function createDirectionMemoryV2(container, onComplete) {
         else setTimeout(()=>onComplete({score:100,details:{'Max span':'12','Perfect run':'✅'}}),700);
       } else {
         if(hint){hint.textContent=`❌ Was: ${sequence.map(k=>DIRS[k]).join(' ')}`;hint.style.color='var(--red)';}
-        setTimeout(()=>onComplete({score:Math.round(Math.max(0,(level-4)/8*100)),details:{'Max span':level+' arrows',Level:level-3}}),1400);
+        setTimeout(()=>onComplete({score:Math.round(Math.max(0,(level-startLevel)/Math.max(1,12-startLevel)*100)),details:{'Max span':level+' arrows',Level:Math.max(1,level-startLevel+1)}}),1400);
       }
     }
   }
@@ -1884,6 +1946,7 @@ function createDirectionMemoryV2(container, onComplete) {
    GAME 24 v2 — Rapid Categorization
 ══════════════════════════════════════════ */
 function createRapidCategorizationV2(container, onComplete) {
+  const duration = v2Duration(45);
   const CATS={
     Animal:    ['Dog','Cat','Lion','Whale','Eagle','Tiger','Frog','Bear','Wolf','Deer'],
     Vehicle:   ['Car','Bus','Train','Rocket','Bicycle','Truck','Boat','Plane','Tram','Kayak'],
@@ -1892,7 +1955,7 @@ function createRapidCategorizationV2(container, onComplete) {
   };
   const CKEYS=Object.keys(CATS);
   const ALL=CKEYS.flatMap(k=>CATS[k].map(w=>({word:w,cat:k})));
-  let words=[], idx=0, score=0, wrong=0, timeLeft=45, gTimer=null, done=false;
+  let words=[], idx=0, score=0, wrong=0, timeLeft=duration, gTimer=null, done=false;
 
   function intro(){
     clearHdr();
@@ -1918,14 +1981,14 @@ function createRapidCategorizationV2(container, onComplete) {
 
   function startGame(){
     words=shuffle([...ALL]).slice(0,20);
-    idx=0;score=0;wrong=0;timeLeft=45;done=false;
-    setHdrTimer('45s');setHdrScore('0 correct');
+    idx=0;score=0;wrong=0;timeLeft=duration;done=false;
+    setHdrTimer(duration + 's');setHdrScore('0 correct');
     container.innerHTML=`
       <div class="v2-rc-wrap">
         <div class="v2-rc-barwrap"><div class="v2-rc-bar" id="rc-bar"></div></div>
         <div class="v2-rc-hud">
           <span>✅ <b id="rc-sc">0</b></span>
-          <span>⏱ <b id="rc-tm">45</b>s</span>
+          <span>⏱ <b id="rc-tm">${duration}</b>s</span>
           <span>❌ <b id="rc-wr">0</b></span>
         </div>
         <div class="v2-rc-word" id="rc-word">—</div>
@@ -1958,7 +2021,7 @@ function createRapidCategorizationV2(container, onComplete) {
   function tick(){
     timeLeft--;
     const tm=document.getElementById('rc-tm');if(tm)tm.textContent=timeLeft;
-    const bar=document.getElementById('rc-bar');if(bar){bar.style.width=(timeLeft/45*100)+'%';if(timeLeft<=10)bar.style.background='var(--red)';}
+    const bar=document.getElementById('rc-bar');if(bar){bar.style.width=(timeLeft/duration*100)+'%';if(timeLeft<=10)bar.style.background='var(--red)';}
     setHdrTimer(timeLeft+'s');
     if(timeLeft<=0&&!done)finish();
   }
@@ -1966,7 +2029,7 @@ function createRapidCategorizationV2(container, onComplete) {
   function finish(){
     done=true;clearInterval(gTimer);
     const total=score+wrong;
-    onComplete({score:Math.min(100,score*5),details:{Correct:score,Wrong:wrong,Accuracy:total?Math.round(score/total*100)+'%':'0%','Words seen':idx}});
+    onComplete({score:Math.min(100,Math.round(score*225/duration)),details:{Correct:score,Wrong:wrong,Accuracy:total?Math.round(score/total*100)+'%':'0%','Words seen':idx}});
   }
 
   intro();
@@ -1977,6 +2040,7 @@ function createRapidCategorizationV2(container, onComplete) {
    GAME 25 v2 — Sudoku Mini
 ══════════════════════════════════════════ */
 function createSudokuMiniV2(container, onComplete) {
+  const blanksToRemove = v2ByDifficulty({ easy: 6, normal: 8, hard: 10 }, 8);
   const SOLS=[
     [[1,2,3,4],[3,4,1,2],[2,1,4,3],[4,3,2,1]],
     [[2,1,4,3],[4,3,2,1],[1,2,3,4],[3,4,1,2]],
@@ -2011,7 +2075,7 @@ function createSudokuMiniV2(container, onComplete) {
     solution=SOLS[rand(0,SOLS.length-1)].map(r=>[...r]);
     puzzle=solution.map(r=>[...r]);
     let removed=0, tries=0;
-    while(removed<8&&tries<200){const r=rand(0,3),c=rand(0,3);if(puzzle[r][c]!==0){puzzle[r][c]=0;removed++;}tries++;}
+    while(removed<blanksToRemove&&tries<200){const r=rand(0,3),c=rand(0,3);if(puzzle[r][c]!==0){puzzle[r][c]=0;removed++;}tries++;}
     elapsed=0; selCell=null;
     setHdrTimer('0:00'); setHdrScore('');
     renderGame();
@@ -2089,6 +2153,7 @@ function createSudokuMiniV2(container, onComplete) {
    GAME 11 v2 — Sequence Prediction
 ══════════════════════════════════════════ */
 function createSequencePredictionV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
   let round = 0, correct = 0;
 
   function makeSeq() {
@@ -2146,17 +2211,17 @@ function createSequencePredictionV2(container, onComplete) {
 
   function nextRound() {
     round++;
-    if (round > 10) { onComplete({ score: correct * 10, details: { Correct: `${correct}/10` } }); return; }
+    if (round > targetRounds) { onComplete({ score: Math.round(correct * 100 / targetRounds), details: { Correct: `${correct}/${targetRounds}` } }); return; }
     const { seq, ans, hint, distractors } = makeSeq();
     const choices = shuffle([ans, ...distractors.slice(0, 3)]);
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
     container.innerHTML = `
       <div class="v2-seq-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b>/10</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:380px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-seq-chain">
           ${seq.map(v => `<div class="v2-seq-item">${v}</div>`).join('<div class="v2-seq-arrow">→</div>')}
           <div class="v2-seq-arrow">→</div>
@@ -2185,8 +2250,10 @@ function createSequencePredictionV2(container, onComplete) {
    GAME 12 v2 — Memory Cards
 ══════════════════════════════════════════ */
 function createMemoryCardsV2(container, onComplete) {
+  const targetLevels = Math.max(1, Math.min(5, v2Rounds(5)));
+  const startLevel = v2ByDifficulty({ easy: 1, normal: 1, hard: 2 }, 1);
   const EMOJIS = ['🐶','🐱','🦊','🐻','🐼','🐸','🦁','🐯','🦋','🐙','🦄','🌺','🍎','🚀','⭐','🎸'];
-  let level = 1, moves = 0, matched = 0, first = null, locked = false;
+  let level = startLevel, moves = 0, matched = 0, first = null, locked = false;
   let seconds = 0, totalMoves = 0, levelTimer = null;
 
   function intro() {
@@ -2214,7 +2281,7 @@ function createMemoryCardsV2(container, onComplete) {
     const cards = shuffle([...EMOJIS.slice(0, pairs), ...EMOJIS.slice(0, pairs)]);
     const cols = level < 2 ? 4 : level < 4 ? 5 : 6;
     matched = 0; moves = 0; seconds = 0; first = null; locked = false;
-    setHdrTimer(`Level ${level}/5`); setHdrScore('0 moves');
+    setHdrTimer(`Level ${level}/${targetLevels}`); setHdrScore('0 moves');
 
     container.innerHTML = `
       <div class="v2-mc-wrap">
@@ -2261,8 +2328,8 @@ function createMemoryCardsV2(container, onComplete) {
         totalMoves += moves;
         const efficiency = Math.max(0, Math.round(100 * (1 - moves / (pairs * 2))));
         setTimeout(() => {
-          if (level < 5) { level++; buildGame(); }
-          else onComplete({ score: Math.min(100, efficiency + level * 5), details: { Levels: 5, 'Total moves': totalMoves, 'Last time': seconds + 's' } });
+          if (level < targetLevels) { level++; buildGame(); }
+          else onComplete({ score: Math.min(100, efficiency + level * 5), details: { Levels: targetLevels, 'Total moves': totalMoves, 'Last time': seconds + 's' } });
         }, 500);
       }
     } else {
@@ -2281,6 +2348,8 @@ function createMemoryCardsV2(container, onComplete) {
    GAME 13 v2 — Flash Calculation
 ══════════════════════════════════════════ */
 function createFlashCalculationV2(container, onComplete) {
+  const targetRounds = v2Rounds(10);
+  const flashAdjust = v2ByDifficulty({ easy: 120, normal: 0, hard: -120 }, 0);
   let round = 0, correct = 0, entered = '', currentSum = 0, phase = 'intro';
 
   function intro() {
@@ -2304,20 +2373,21 @@ function createFlashCalculationV2(container, onComplete) {
 
   function nextRound() {
     round++;
-    if (round > 10) { onComplete({ score: correct * 10, details: { Correct: `${correct}/10` } }); return; }
-    const count = round <= 3 ? 3 : round <= 7 ? 4 : 5;
+    if (round > targetRounds) { onComplete({ score: Math.round(correct * 100 / targetRounds), details: { Correct: `${correct}/${targetRounds}` } }); return; }
+    const scaledRound = Math.ceil(round * 10 / targetRounds);
+    const count = scaledRound <= 3 ? 3 : scaledRound <= 7 ? 4 : 5;
     const nums = Array.from({ length: count }, () => rand(5, 25));
     currentSum = nums.reduce((a, b) => a + b, 0);
     entered = ''; phase = 'flash';
-    setHdrTimer(`Round ${round}/10`); setHdrScore(`${correct} correct`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} correct`);
 
     container.innerHTML = `
       <div class="v2-fc-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b>/10</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span style="color:var(--txt3)">Correct: <b style="color:var(--green)">${correct}</b></span>
         </div>
-        <div class="v2-prog-track" style="width:100%;max-width:360px"><div class="v2-prog-fill" style="width:${(round-1)/10*100}%"></div></div>
+        <div class="v2-prog-track" style="width:100%;max-width:360px"><div class="v2-prog-fill" style="width:${(round-1)/targetRounds*100}%"></div></div>
         <div class="v2-fc-stage">
           <p class="v2-fc-label" id="fc-lbl">Watch the numbers…</p>
           <div class="v2-fc-number" id="fc-num">–</div>
@@ -2352,7 +2422,7 @@ function createFlashCalculationV2(container, onComplete) {
       numEl.style.animation = 'none'; numEl.offsetHeight; numEl.style.animation = 'v2Pop .15s ease';
       if (cntEl) cntEl.textContent = `${i+1} of ${count}`;
       i++;
-      setTimeout(flashNext, round <= 5 ? 650 : 520);
+      setTimeout(flashNext, Math.max(300, (scaledRound <= 5 ? 650 : 520) + flashAdjust));
     }
     setTimeout(flashNext, 600);
   }
@@ -2399,8 +2469,9 @@ function createFlashCalculationV2(container, onComplete) {
    GAME 14 v2 — Peripheral Vision
 ══════════════════════════════════════════ */
 function createPeripheralVisionV2(container, onComplete) {
+  const duration = v2Duration(45);
   const SYMS = ['★','◆','●','▲','■','♦','✿','⬟'];
-  let score = 0, misses = 0, timeLeft = 45, gameTimer = null, animFrame = null, symbols = [];
+  let score = 0, misses = 0, timeLeft = duration, gameTimer = null, animFrame = null, symbols = [];
   let W = 0, H = 0, canvas, ctx;
 
   function intro() {
@@ -2423,13 +2494,13 @@ function createPeripheralVisionV2(container, onComplete) {
   }
 
   function startGame() {
-    score = 0; misses = 0; timeLeft = 45; symbols = [];
-    setHdrTimer('45s'); setHdrScore('0 hits');
+    score = 0; misses = 0; timeLeft = duration; symbols = [];
+    setHdrTimer(duration + 's'); setHdrScore('0 hits');
 
     container.innerHTML = `
       <div class="v2-pv-wrap">
         <div class="v2-pv-hud">
-          <span>⏱ <b id="pv-tm">45</b>s</span>
+          <span>⏱ <b id="pv-tm">${duration}</b>s</span>
           <span>Hits: <b id="pv-sc" style="color:var(--green)">0</b></span>
           <span>Misses: <b id="pv-ms" style="color:var(--red)">0</b></span>
         </div>
@@ -2519,7 +2590,7 @@ function createPeripheralVisionV2(container, onComplete) {
     if (timeLeft <= 0) {
       clearInterval(gameTimer); cancelAnimationFrame(animFrame);
       const total = score + misses, acc = total ? Math.round(score / total * 100) : 0;
-      onComplete({ score: Math.min(100, score * 4), details: { Hits: score, Misses: misses, Accuracy: acc + '%' } });
+      onComplete({ score: Math.min(100, Math.round(score * 180 / duration)), details: { Hits: score, Misses: misses, Accuracy: acc + '%' } });
     }
   }
 
@@ -2531,6 +2602,8 @@ function createPeripheralVisionV2(container, onComplete) {
    GAME 15 v2 — Visual Search
 ══════════════════════════════════════════ */
 function createVisualSearchV2(container, onComplete) {
+  const targetRounds = v2Rounds(8);
+  const densityBoost = v2ByDifficulty({ easy: -2, normal: 0, hard: 2 }, 0);
   const PAIRS = [
     { target:'B', distractor:'E' }, { target:'Q', distractor:'O' },
     { target:'6', distractor:'9' }, { target:'p', distractor:'q' },
@@ -2560,25 +2633,25 @@ function createVisualSearchV2(container, onComplete) {
 
   function nextRound() {
     round++;
-    if (round > 8) {
+    if (round > targetRounds) {
       const avgMs = correct ? Math.round(totalMs / correct) : 9999;
       const speedBonus = Math.max(0, Math.round((5000 - Math.min(avgMs, 5000)) / 50));
-      onComplete({ score: Math.min(100, correct * 10 + speedBonus), details: { Found: `${correct}/8`, 'Avg time': correct ? (totalMs/correct/1000).toFixed(1)+'s' : '—', 'Speed bonus': '+'+speedBonus } });
+      onComplete({ score: Math.min(100, Math.round(correct * 80 / targetRounds) + speedBonus), details: { Found: `${correct}/${targetRounds}`, 'Avg time': correct ? (totalMs/correct/1000).toFixed(1)+'s' : '—', 'Speed bonus': '+'+speedBonus } });
       return;
     }
     const { target, distractor } = PAIRS[rand(0, PAIRS.length - 1)];
     const isMobile = container.clientWidth < 420;
-    const COLS = isMobile ? 10 : 16, ROWS = isMobile ? 10 : 9;
+    const COLS = (isMobile ? 10 : 16) + densityBoost, ROWS = (isMobile ? 10 : 9) + Math.max(0, densityBoost);
     const total = COLS * ROWS;
     const targetIdx = rand(0, total - 1);
     const cells = Array.from({ length: total }, (_, i) => i === targetIdx ? target : distractor);
     roundStart = Date.now();
-    setHdrTimer(`Round ${round}/8`); setHdrScore(`${correct} found`);
+    setHdrTimer(`Round ${round}/${targetRounds}`); setHdrScore(`${correct} found`);
 
     container.innerHTML = `
       <div class="v2-vs-wrap">
         <div class="v2-ms-topbar">
-          <span>Round <b>${round}</b>/8</span>
+          <span>Round <b>${round}</b>/${targetRounds}</span>
           <span style="color:var(--txt3)">Found: <b style="color:var(--green)">${correct}</b></span>
         </div>
         <div class="v2-vs-target-bar">Find: <span class="v2-vs-target-char">${target}</span></div>

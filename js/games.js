@@ -25,7 +25,7 @@ function createFastReading(container, onComplete) {
     <div class="rsvp-wrap game-panel">
       <div class="rsvp-speed-ctrl">
         <span>Speed:</span>
-        <input type="range" id="wpm-sl" min="100" max="1000" value="300" step="50">
+        <input type="range" id="wpm-sl" min="30" max="300" value="300" step="10">
         <strong id="wpm-val">300</strong> WPM
       </div>
       <div class="rsvp-screen">
@@ -1003,13 +1003,14 @@ function createStoryRecall(container, onComplete) {
 function createSymbolDigit(container, onComplete) {
   const syms=['★','◆','●','▲','■','♥','✿','⬟'];
   const key={}; syms.forEach((s,i)=>key[s]=i+1);
-  let timeLeft=90, score=0, timer, current=0;
+  const duration=typeof v2Duration==='function'?v2Duration(90):90;
+  let timeLeft=duration, score=0, timer, current=0;
   const taskSyms=Array.from({length:40},()=>syms[rand(0,syms.length-1)]);
 
   container.innerHTML=`<div style="width:100%;max-width:620px">
     <div style="display:flex;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:.82rem;color:var(--txt3)">Correct: <b id="sd-sc">0</b></span>
-      <span style="font-weight:700;color:var(--cyan)">⏱ <span id="sd-tm">90</span>s</span>
+      <span style="font-weight:700;color:var(--cyan)">⏱ <span id="sd-tm">${duration}</span>s</span>
     </div>
     <div class="symbol-key">
       ${syms.map(s=>`<div class="sym-pair"><div class="sym">${s}</div><div class="divider"></div><div class="dig">${key[s]}</div></div>`).join('')}
@@ -1227,7 +1228,7 @@ function createSudokuMini(container, onComplete) {
    GAME 26 — Tower Logic (Tower of Hanoi)
 ═══════════════════════════════════════ */
 function createTowerLogic(container, onComplete) {
-  let numDiscs=3, pegs=[[],[],[]], selected=null, moves=0;
+  let numDiscs=typeof v2ByDifficulty==='function'?v2ByDifficulty({easy:3,normal:3,hard:4},3):3, pegs=[[],[],[]], selected=null, moves=0;
   const colors=['#ef4444','#f97316','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'];
 
   function init(){
@@ -1285,8 +1286,10 @@ function createTowerLogic(container, onComplete) {
    GAME 27 — Trail Making Test
 ═══════════════════════════════════════ */
 function createTrailMaking(container, onComplete) {
-  let part='A', startTime, path=[], current=1, animFrame;
-  const NODES_A=15, letters='ABCDEFGHIJKLMNO';
+  const targetNodes=typeof v2Rounds==='function'?v2Rounds(15):15;
+  const defaultPart=typeof v2ByDifficulty==='function'?v2ByDifficulty({easy:'A',normal:'A',hard:'B'},'A'):'A';
+  let part=defaultPart, startTime, path=[], current=1, animFrame;
+  const letters='ABCDEFGHIJKLMNOQRST';
 
   container.innerHTML=`<div style="text-align:center;width:100%">
     <div style="display:flex;gap:16px;justify-content:center;margin-bottom:8px">
@@ -1299,7 +1302,7 @@ function createTrailMaking(container, onComplete) {
 
   el('tm-partA').onclick=()=>startPart('A');
   el('tm-partB').onclick=()=>startPart('B');
-  startPart('A');
+  startPart(defaultPart);
 
   function startPart(p){
     part=p; current=1; path=[]; startTime=null;
@@ -1313,7 +1316,7 @@ function createTrailMaking(container, onComplete) {
     const canvas=el('tm-canvas');
     const W=canvas.width, H=canvas.height;
     nodes=[];
-    const count=part==='A'?NODES_A:14;
+    const count=part==='A'?targetNodes:Math.max(4, Math.min(20, targetNodes));
     let attempts=0;
     while(nodes.length<count&&attempts<2000){
       attempts++;
@@ -1333,7 +1336,7 @@ function createTrailMaking(container, onComplete) {
   function getTarget(){
     if(part==='A') return String(current);
     const seq=[];
-    for(let i=0;i<14;i++) seq.push(i%2===0?String(Math.floor(i/2)+1):letters[Math.floor(i/2)]);
+    for(let i=0;i<nodes.length;i++) seq.push(i%2===0?String(Math.floor(i/2)+1):letters[Math.floor(i/2)]);
     return seq[current-1];
   }
 
@@ -1346,7 +1349,7 @@ function createTrailMaking(container, onComplete) {
     if(!node)return;
     if(!startTime)startTime=Date.now();
     path.push(node); current++;
-    const maxNodes=part==='A'?NODES_A:14;
+    const maxNodes=nodes.length;
     if(current>maxNodes){
       const elapsed=Math.round((Date.now()-startTime)/1000);
       const score=Math.max(20,100-elapsed*2);
@@ -1406,9 +1409,11 @@ function createFaceMemory(container, onComplete) {
     </svg>`;
   }
 
-  const seeds=shuffle([...Array.from({length:30},(_,i)=>i)]).slice(0,12);
-  const studyFaces=seeds.slice(0,6), testFaces=shuffle([...seeds]);
-  let phase='study', selected=[], countdown, t=12;
+  const targetFaces=typeof v2ByDifficulty==='function'?v2ByDifficulty({easy:4,normal:6,hard:8},6):6;
+  const studyTime=typeof v2Duration==='function'?v2Duration(15):12;
+  const seeds=shuffle([...Array.from({length:30},(_,i)=>i)]).slice(0,targetFaces*2);
+  const studyFaces=seeds.slice(0,targetFaces), testFaces=shuffle([...seeds]);
+  let phase='study', selected=[], countdown, t=studyTime;
 
   function showStudy(){
     container.innerHTML=`<div style="text-align:center;width:100%">
@@ -1421,16 +1426,16 @@ function createFaceMemory(container, onComplete) {
   function showTest(){
     selected=[];
     container.innerHTML=`<div style="text-align:center;width:100%">
-      <div class="phase-label">Select all 6 faces you saw</div>
-      <div class="face-grid" id="fm-test">${testFaces.map((s,i)=>`<div class="face-card" data-i="${i}" data-s="${s}">${genFace(s)}<span>${selected.length}/6</span></div>`).join('')}</div>
-      <button class="btn-primary" id="fm-sub" style="margin-top:14px;display:none">Submit (${selected.length}/6)</button>
+      <div class="phase-label">Select all ${targetFaces} faces you saw</div>
+      <div class="face-grid" id="fm-test">${testFaces.map((s,i)=>`<div class="face-card" data-i="${i}" data-s="${s}">${genFace(s)}<span>${selected.length}/${targetFaces}</span></div>`).join('')}</div>
+      <button class="btn-primary" id="fm-sub" style="margin-top:14px;display:none">Submit (${selected.length}/${targetFaces})</button>
     </div>`;
     qsa('.face-card',container).forEach(card=>card.onclick=()=>{
       const si=card.dataset.s;
       if(card.classList.contains('selected')){card.classList.remove('selected');selected=selected.filter(x=>x!==si);}
-      else if(selected.length<6){card.classList.add('selected');selected.push(si);}
+      else if(selected.length<targetFaces){card.classList.add('selected');selected.push(si);}
       const sub=el('fm-sub');
-      if(sub){sub.textContent=`Submit (${selected.length}/6)`;sub.style.display=selected.length===6?'inline-block':'none';}
+      if(sub){sub.textContent=`Submit (${selected.length}/${targetFaces})`;sub.style.display=selected.length===targetFaces?'inline-block':'none';}
     });
     el('fm-sub').onclick=()=>{
       let correct=0;
@@ -1441,7 +1446,7 @@ function createFaceMemory(container, onComplete) {
         else if(inSelected&&!inStudy)card.classList.add('wrong');
       });
       el('fm-sub').style.display='none';
-      setTimeout(()=>onComplete({score:Math.round(correct/6*100),details:{Correct:`${correct}/6`}}),1200);
+      setTimeout(()=>onComplete({score:Math.round(correct/targetFaces*100),details:{Correct:`${correct}/${targetFaces}`,'Study time':studyTime+'s'}}),1200);
     };
   }
   showStudy();
@@ -1452,12 +1457,13 @@ function createFaceMemory(container, onComplete) {
    GAME 29 — Focus Timer
 ═══════════════════════════════════════ */
 function createFocusTimer(container, onComplete) {
-  let timeLeft=90, onTarget=0, total=0, timer, animFrame;
+  const duration=typeof v2Duration==='function'?v2Duration(90):90;
+  let timeLeft=duration, onTarget=0, total=0, timer, animFrame;
   let dotX=0, dotY=0, dotVx=1.2, dotVy=0.9, tracking=false;
   let mouseX=-99, mouseY=-99;
 
   container.innerHTML=`<div style="text-align:center;width:100%">
-    <div class="focus-stats">⏱ <b id="ft-tm">90</b>s | On Target: <b id="ft-on" style="color:var(--cyan)">0</b>%</div>
+    <div class="focus-stats">⏱ <b id="ft-tm">${duration}</b>s | On Target: <b id="ft-on" style="color:var(--cyan)">0</b>%</div>
     <p style="font-size:.8rem;color:var(--txt3);margin:6px 0">Keep your cursor on the moving dot!</p>
     <canvas class="focus-canvas" id="ft-canvas" width="540" height="380"></canvas>
   </div>`;
@@ -1497,7 +1503,7 @@ function createFocusTimer(container, onComplete) {
     animFrame=requestAnimationFrame(draw);
   }
 
-  timer=setInterval(()=>{timeLeft--;if(el('ft-tm'))el('ft-tm').textContent=timeLeft;if(timeLeft<=0){clearInterval(timer);cancelAnimationFrame(animFrame);const pct=total?Math.round(onTarget/total*100):0;onComplete({score:pct,details:{'On target':pct+'%','Duration':'90s'}});}},1000);
+  timer=setInterval(()=>{timeLeft--;if(el('ft-tm'))el('ft-tm').textContent=timeLeft;if(timeLeft<=0){clearInterval(timer);cancelAnimationFrame(animFrame);const pct=total?Math.round(onTarget/total*100):0;onComplete({score:pct,details:{'On target':pct+'%','Duration':duration+'s'}});}},1000);
   draw();
   return{destroy(){clearInterval(timer);cancelAnimationFrame(animFrame);}};
 }
@@ -1506,15 +1512,18 @@ function createFocusTimer(container, onComplete) {
    GAME 30 — Speed Comparison
 ═══════════════════════════════════════ */
 function createSpeedComparison(container, onComplete) {
+  const targetRounds=typeof v2Rounds==='function'?v2Rounds(20):20;
+  const difficultyShift=typeof v2ByDifficulty==='function'?v2ByDifficulty({easy:-1,normal:0,hard:1},0):0;
   let round=0, correct=0, totalMs=0, startTime;
   function nextRound(){
-    round++;if(round>20){const score=Math.round(correct*4+(10-Math.min(10,totalMs/correct/100||0)));onComplete({score:Math.min(100,score),details:{Correct:`${correct}/20`,'Avg time':Math.round(totalMs/correct||0)+'ms'}});return;}
+    round++;if(round>targetRounds){const score=Math.round(correct*(80/targetRounds)+(10-Math.min(10,totalMs/correct/100||0)));onComplete({score:Math.min(100,score),details:{Correct:`${correct}/${targetRounds}`,'Avg time':Math.round(totalMs/correct||0)+'ms'}});return;}
     let a,b;
-    const digits=round<=5?4:round<=12?5:6;
+    const scaledRound=Math.ceil(round*20/targetRounds)+difficultyShift;
+    const digits=scaledRound<=5?4:scaledRound<=12?5:6;
     do{a=rand(10**(digits-1),10**digits-1);b=rand(10**(digits-1),10**digits-1);}while(a===b);
     startTime=Date.now();
     container.innerHTML=`<div style="text-align:center;width:100%;max-width:500px">
-      <div class="round-counter">Round ${round}/20 — Correct: ${correct}</div>
+      <div class="round-counter">Round ${round}/${targetRounds} — Correct: ${correct}</div>
       <p style="font-size:.8rem;color:var(--txt3);margin:8px 0">Click the LARGER number</p>
       <div class="comp-numbers">
         <div class="comp-num" data-v="${a}">${a.toLocaleString()}</div>
